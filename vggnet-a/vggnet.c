@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <CL/cl.h>
 
 static void pooling2x2(float* input, float* output, int N) {
     for (int i = 0; i < N; ++i) {
@@ -108,7 +109,54 @@ static float* get_param(float** array, int size) {
     return subarray;
 }
 
+void read_kernel(const char* filename, char** dst) {
+    FILE* infp = fopen(filename, "r");
+    fseek(infp, -1, SEEK_END);
+    size_t kernel_len = (size_t)ftell(infp);
+    fseek(infp, 0, SEEK_SET);
+
+    *dst = (char*)malloc(sizeof(char) * (kernel_len + 1));
+    fread(*dst, sizeof(char), kernel_len, infp);
+    (*dst)[kernel_len] = '\0';
+    fclose(infp);
+}
+
+cl_context context;
+cl_program program;
+cl_command_queue cmd_queue;
+
+int init_opencl() {
+    cl_platform_id platform;
+    clGetPlatformIDs(1, &platform, NULL);
+    cl_device_id device;
+    if (clGetDeviceIDs(platform, CL_DEVICE_TYPE_CPU, 1, &device, NULL) != 0) {
+        printf("failed to initialize device...\n");
+        return 1;
+    }
+    context = clCreateContext(NULL, 1, &device, NULL, NULL, NULL);
+
+    char* kernel_source;
+    read_kernel("./kernel.cl", &kernel_source);
+    program = clCreateProgramWithSource(context, 1, (const char**)&kernel_source, NULL, NULL);
+    if (clBuildProgram(program, 1, &device, NULL, NULL, NULL) != CL_SUCCESS) {
+        printf("failed to build program...\n");
+        size_t loglen;
+        char* logbuf;
+        clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, 0, NULL, &loglen);
+        logbuf = (char*)malloc(loglen);
+        clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, loglen, logbuf, NULL);
+        printf("%s\n", logbuf);
+        return 1;
+    }
+
+    cmd_queue = clCreateCommandQueue(context, device, 0, NULL);
+    return 0;
+}
+
 void vggnet(float* images, float* network, int* labels, float* confidences, int num_images) {
+    if (init_opencl() != 0) {
+        return;
+    }
     // Convolution layers
     float *c1_1, *c1_2, *c2_1, *c2_2, *c3_1, *c3_2, *c3_3,
         *c4_1, *c4_2, *c4_3, *c5_1, *c5_2, *c5_3;
