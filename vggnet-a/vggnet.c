@@ -198,7 +198,7 @@ int init_opencl() {
     char* kernel_source;
     read_kernel("./kernel.cl", &kernel_source);
     program = clCreateProgramWithSource(context, 1, (const char**)&kernel_source, NULL, NULL);
-    if (clBuildProgram(program, 1, &device, NULL, NULL, NULL) != CL_SUCCESS) {
+    if (clBuildProgram(program, 1, &device, "-cl-denorms-are-zero -cl-fast-relaxed-math", NULL, NULL) != CL_SUCCESS) {
         printf("failed to build program...\n");
         size_t loglen;
         char* logbuf;
