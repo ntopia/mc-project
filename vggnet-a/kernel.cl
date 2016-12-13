@@ -22,7 +22,7 @@ __kernel void pooling_layer(    __global const float* restrict inputs,
 
 __kernel void convolution_layer(    __global const float* inputs,
                                     __global const float* filters,
-                                    __global const float* biases,
+                                    __constant const float* biases,
                                     __global float* outputs,
                                     int n, int d1, int d2) {
     int id = get_global_id(0);
@@ -61,9 +61,9 @@ __kernel void convolution_layer(    __global const float* inputs,
     }
 }
 
-__kernel void fc_layer( __global const float* input_neuron,
+__kernel void fc_layer( __constant const float* input_neuron,
                         __global const float* weights,
-                        __global const float* biases,
+                        __constant const float* biases,
                         __global float* output_neuron,
                         int n, int m) {
 
