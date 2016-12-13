@@ -1,4 +1,7 @@
-.o
+*.o
+*.swp
+*.stdout
+*.stderr
 vggnet
 images/
 network/
