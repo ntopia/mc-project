@@ -1,6 +1,6 @@
 
 CC=gcc
-CFLAGS=-Wall -g -O2
+CFLAGS=-Wall -g -O2 -std=gnu99
 
 LIBS = -lm -lrt -lOpenCL
 LDFLAGS = ${LIBS}
