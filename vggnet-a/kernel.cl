@@ -41,19 +41,21 @@ __kernel void convolution_layer(    __global const float* inputs,
             }
         }
 
-        for (i = 0; i < n; ++i) {
-            for (j = 0; j < n; ++j) {
-                sum = 0;
-                for (k = 0; k < 3; ++k) {
+        for (k = 0; k < 3; ++k) {
+            for (i = 0; i < n; ++i) {
+                x = i + k - 1;
+                if (x < 0 || x >= n) continue;
+
+                for (j = 0; j < n; ++j) {
+                    sum = 0;
                     for (l = 0; l < 3; ++l) {
-                        x = i + k - 1;
                         y = j + l - 1;
-                        if (0 <= x && x < n && 0 <= y && y < n) {
+                        if (0 <= y && y < n) {
                             sum += inputs[n * n * q + x * n + y] * filter[k][l];
                         }
                     }
+                    outputs[n * n * id + i * n + j] += sum;
                 }
-                outputs[n * n * id + i * n + j] += sum;
             }
         }
     }
