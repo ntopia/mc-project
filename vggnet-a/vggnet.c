@@ -4,6 +4,10 @@
 #include <math.h>
 #include <CL/cl.h>
 
+cl_context context;
+cl_program program;
+cl_command_queue cmd_queue;
+
 static void pooling2x2(float* input, float* output, int N) {
     for (int i = 0; i < N; ++i) {
         for (int j = 0; j < N; ++j) {
@@ -19,12 +23,30 @@ static void pooling2x2(float* input, float* output, int N) {
     }
 }
 
-static void pooling_layer(float* inputs, float* outputs, int N, int D) {
+static void pooling_layer_normal(float* inputs, float* outputs, int N, int D) {
     for (int i = 0; i < D; ++i) {
         float* input = inputs + i * N * N * 4;
         float* output = outputs + i * N * N;
         pooling2x2(input, output, N);
     }
+}
+
+static void pooling_layer(float* inputs, float* outputs, int N, int D) {
+    cl_mem buf_input = clCreateBuffer(context, CL_MEM_USE_HOST_PTR, sizeof(float) * D * N * N * 4, (void*)inputs, NULL);
+    cl_mem buf_output = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * D * N * N, NULL, NULL);
+
+    cl_kernel kernel = clCreateKernel(program, "pooling_layer", NULL);
+    clSetKernelArg(kernel, 0, sizeof(cl_mem), (void*)&buf_input);
+    clSetKernelArg(kernel, 1, sizeof(cl_mem), (void*)&buf_output);
+    clSetKernelArg(kernel, 2, sizeof(int), (void*)&N);
+    clSetKernelArg(kernel, 3, sizeof(int), (void*)&D);
+
+    size_t global_work_size = D;
+    size_t global_work_offset = 0;
+    size_t local_work_size = D / 8;
+    clEnqueueNDRangeKernel(cmd_queue, kernel, 1, &global_work_offset, &global_work_size, &local_work_size, 0, NULL, NULL);
+
+    clEnqueueReadBuffer(cmd_queue, buf_output, CL_TRUE, 0, sizeof(float) * D * N * N, (void*)outputs, 0, NULL, NULL);
 }
 
 static void convolution3x3(float* input, float* output, float* filter, int N) {
@@ -46,28 +68,48 @@ static void convolution3x3(float* input, float* output, float* filter, int N) {
 }
 
 #define ReLU(x) (((x) > 0) ? (x) : 0)
-static void convolution_layer(float* inputs, float* outputs, float* filters, float* biases, int N, int D1, int D2) {
+static void convolution_layer_normal(float* inputs, float* outputs, float* filters, float* biases, int N, int D1, int D2) {
     memset(outputs, 0, sizeof(float) * N * N * D2);
 
     for (int j = 0; j < D2; ++j) {
+        float* output = outputs + N * N * j;
         for (int i = 0; i < D1; ++i) {
             float* input = inputs + N * N * i;
-            float* output = outputs + N * N * j;
             float* filter = filters + 3 * 3 * (j * D1 + i);
             convolution3x3(input, output, filter, N); 
         }
-    }
 
-    for (int i = 0; i < D2; ++i) {
-        float* output = outputs + N * N * i;
-        float bias = biases[i];
-        for (int j = 0; j < N * N; ++j) {
-            output[j] = ReLU(output[j] + bias);
+        float bias = biases[j];
+        for (int k = 0; k < N * N; ++k) {
+            output[k] = ReLU(output[k] + bias);
         }
     }
 }
 
-static void fc_layer(float* input_neuron, float* output_neuron, float* weights, float* biases, int N, int M) {
+static void convolution_layer(float* inputs, float* outputs, float* filters, float* biases, int N, int D1, int D2) {
+    cl_mem buf_inputs = clCreateBuffer(context, CL_MEM_USE_HOST_PTR, sizeof(float) * N * N * D1, (void*)inputs, NULL);
+    cl_mem buf_filters = clCreateBuffer(context, CL_MEM_USE_HOST_PTR, sizeof(float) * 3 * 3 * D1 * D2, (void*)filters, NULL);
+    cl_mem buf_biases = clCreateBuffer(context, CL_MEM_USE_HOST_PTR, sizeof(float) * D2, (void*)biases, NULL);
+    cl_mem buf_outputs = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * N * N * D2, NULL, NULL);
+
+    cl_kernel kernel = clCreateKernel(program, "convolution_layer", NULL);
+    clSetKernelArg(kernel, 0, sizeof(cl_mem), (void*)&buf_inputs);
+    clSetKernelArg(kernel, 1, sizeof(cl_mem), (void*)&buf_filters);
+    clSetKernelArg(kernel, 2, sizeof(cl_mem), (void*)&buf_biases);
+    clSetKernelArg(kernel, 3, sizeof(cl_mem), (void*)&buf_outputs);
+    clSetKernelArg(kernel, 4, sizeof(int), (void*)&N);
+    clSetKernelArg(kernel, 5, sizeof(int), (void*)&D1);
+    clSetKernelArg(kernel, 6, sizeof(int), (void*)&D2);
+
+    size_t global_work_size = D2;
+    size_t global_work_offset = 0;
+    size_t local_work_size = D2 / 8;
+    clEnqueueNDRangeKernel(cmd_queue, kernel, 1, &global_work_offset, &global_work_size, &local_work_size, 0, NULL, NULL);
+
+    clEnqueueReadBuffer(cmd_queue, buf_outputs, CL_TRUE, 0, sizeof(float) * N * N * D2, (void*)outputs, 0, NULL, NULL);
+}
+
+static void fc_layer_normal(float* input_neuron, float* output_neuron, float* weights, float* biases, int N, int M) {
     for (int j = 0; j < M; ++j) {
         float sum = biases[j];
         for (int i = 0; i < N; ++i) {
@@ -75,6 +117,28 @@ static void fc_layer(float* input_neuron, float* output_neuron, float* weights, 
         }
         output_neuron[j] = ReLU(sum);
     }
+}
+
+static void fc_layer(float* input_neuron, float* output_neuron, float* weights, float* biases, int N, int M) {
+    cl_mem buf_input = clCreateBuffer(context, CL_MEM_USE_HOST_PTR, sizeof(float) * N, (void*)input_neuron, NULL);
+    cl_mem buf_weights = clCreateBuffer(context, CL_MEM_USE_HOST_PTR, sizeof(float) * N * M, (void*)weights, NULL);
+    cl_mem buf_biases = clCreateBuffer(context, CL_MEM_USE_HOST_PTR, sizeof(float) * M, (void*)biases, NULL);
+    cl_mem buf_output = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * M, NULL, NULL);
+
+    cl_kernel kernel = clCreateKernel(program, "fc_layer", NULL);
+    clSetKernelArg(kernel, 0, sizeof(cl_mem), (void*)&buf_input);
+    clSetKernelArg(kernel, 1, sizeof(cl_mem), (void*)&buf_weights);
+    clSetKernelArg(kernel, 2, sizeof(cl_mem), (void*)&buf_biases);
+    clSetKernelArg(kernel, 3, sizeof(cl_mem), (void*)&buf_output);
+    clSetKernelArg(kernel, 4, sizeof(int), (void*)&N);
+    clSetKernelArg(kernel, 5, sizeof(int), (void*)&M);
+
+    size_t global_work_size = M;
+    size_t global_work_offset = 0;
+    size_t local_work_size = M / 8;
+    clEnqueueNDRangeKernel(cmd_queue, kernel, 1, &global_work_offset, &global_work_size, &local_work_size, 0, NULL, NULL);
+
+    clEnqueueReadBuffer(cmd_queue, buf_output, CL_TRUE, 0, sizeof(float) * M, (void*)output_neuron, 0, NULL, NULL);
 }
 
 static void softmax(float* output) {
@@ -120,10 +184,6 @@ void read_kernel(const char* filename, char** dst) {
     (*dst)[kernel_len] = '\0';
     fclose(infp);
 }
-
-cl_context context;
-cl_program program;
-cl_command_queue cmd_queue;
 
 int init_opencl() {
     cl_platform_id platform;
