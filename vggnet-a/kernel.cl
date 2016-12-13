@@ -56,8 +56,8 @@ __kernel void convolution_layer(    __global const float* inputs,
     }
 }
 
-__kernel void fc_layer( __constant const float* input_neuron,
-                        __global const float* weights,
+__kernel void fc_layer( __constant const float4* input_neuron,
+                        __global const float4* weights,
                         __constant const float* biases,
                         __global float* output_neuron,
                         int n, int m) {
@@ -67,8 +67,13 @@ __kernel void fc_layer( __constant const float* input_neuron,
     int i, j;
 
     sum = biases[id];
+    n /= 4;
     for (i = 0; i < n; ++i) {
-        sum += input_neuron[i] * weights[id * n + i];
+        //sum += input_neuron[i] * weights[id * n + i];
+        //sum += input_neuron[i + 1] * weights[id * n + i + 1];
+        //sum += input_neuron[i + 2] * weights[id * n + i + 2];
+        //sum += input_neuron[i + 3] * weights[id * n + i + 3];
+        sum += dot(input_neuron[i], weights[id * n + i]);
     }
     output_neuron[id] = ReLU(sum);
 }
