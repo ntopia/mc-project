@@ -43,7 +43,7 @@ static void pooling_layer(float* inputs, float* outputs, int N, int D) {
 
     size_t global_work_size = D;
     size_t global_work_offset = 0;
-    size_t local_work_size = D / 8;
+    size_t local_work_size = D / 16;
     clEnqueueNDRangeKernel(cmd_queue, kernel, 1, &global_work_offset, &global_work_size, &local_work_size, 0, NULL, NULL);
 
     clEnqueueReadBuffer(cmd_queue, buf_output, CL_TRUE, 0, sizeof(float) * D * N * N, (void*)outputs, 0, NULL, NULL);
@@ -103,7 +103,7 @@ static void convolution_layer(float* inputs, float* outputs, float* filters, flo
 
     size_t global_work_size = D2;
     size_t global_work_offset = 0;
-    size_t local_work_size = D2 / 8;
+    size_t local_work_size = D2 / 16;
     clEnqueueNDRangeKernel(cmd_queue, kernel, 1, &global_work_offset, &global_work_size, &local_work_size, 0, NULL, NULL);
 
     clEnqueueReadBuffer(cmd_queue, buf_outputs, CL_TRUE, 0, sizeof(float) * N * N * D2, (void*)outputs, 0, NULL, NULL);
