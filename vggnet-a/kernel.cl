@@ -1,25 +1,21 @@
 
 #define ReLU(x) (((x) > 0) ? (x) : 0)
 
-__kernel void pooling_layer(    __global const float* inputs,
-                                __global float* outputs,
+__kernel void pooling_layer(    __global const float* restrict inputs,
+                                __global float* restrict outputs,
                                 int n, int d) {
     int id = get_global_id(0);
-    int i, j, k, l;
-    int offset;
-    float maxv, pixel;
+    int i, j;
+    float maxv;
 
-    offset = id * n * n;
+    inputs += n * n * id * 4;
     for (i = 0; i < n; ++i) {
         for (j = 0; j < n; ++j) {
-            maxv = 0;
-            for (k = 0; k < 2; ++k) {
-                for (l = 0; l < 2; ++l) {
-                    pixel = inputs[offset * 4 + (i * 2 + k) * 2 * n + j * 2 + l];
-                    maxv = (maxv < pixel) ? pixel : maxv;
-                }
-            }
-            outputs[offset + i * n + j] = maxv;
+            maxv =           inputs[(i * 2 + 0) * n * 2 + j * 2 + 0];
+            maxv = max(maxv, inputs[(i * 2 + 0) * n * 2 + j * 2 + 1]);
+            maxv = max(maxv, inputs[(i * 2 + 1) * n * 2 + j * 2 + 0]);
+            maxv = max(maxv, inputs[(i * 2 + 1) * n * 2 + j * 2 + 1]);
+            outputs[n * n * id + i * n + j] = maxv;
         }
     }
 }
