@@ -30,10 +30,17 @@ __kernel void convolution_layer(    __global const float* inputs,
                                     __global float* outputs,
                                     int n, int d1, int d2) {
     int id = get_global_id(0);
-    int p, i, j, k, l, x, y;
+    int p, q, i, j, k, l, x, y;
     float sum;
+    float filter[3][3];
 
-    for (p = 0; p < d1; ++p) {
+    for (q = 0; q < d1; ++q) {
+        for (k = 0; k < 3; ++k) {
+            for (l = 0; l < 3; ++l) {
+                filter[k][l] = filters[3 * 3 * (id * d1 + q) + k * 3 + l];
+            }
+        }
+
         for (i = 0; i < n; ++i) {
             for (j = 0; j < n; ++j) {
                 sum = 0;
@@ -42,7 +49,7 @@ __kernel void convolution_layer(    __global const float* inputs,
                         x = i + k - 1;
                         y = j + l - 1;
                         if (0 <= x && x < n && 0 <= y && y < n) {
-                            sum += inputs[n * n * p + x * n + y] * filters[3 * 3 * (id * d1 + p) + k * 3 + l];
+                            sum += inputs[n * n * q + x * n + y] * filter[k][l];
                         }
                     }
                 }
