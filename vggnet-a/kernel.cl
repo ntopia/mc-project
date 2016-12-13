@@ -30,6 +30,12 @@ __kernel void convolution_layer(    __global const float* inputs,
     float sum;
     float filter[3];
 
+    for (i = 0; i < n; ++i) {
+        for (j = 0; j < n; ++j) {
+            outputs[n * n * id + i * n + j] = 0;
+        }
+    }
+
     for (q = 0; q < d1; ++q) {
         for (k = 0; k < 3; ++k) {
             filter[0] = filters[3 * 3 * (id * d1 + q) + k * 3 + 0];
@@ -69,10 +75,6 @@ __kernel void fc_layer( __constant const float4* input_neuron,
     sum = biases[id];
     n /= 4;
     for (i = 0; i < n; ++i) {
-        //sum += input_neuron[i] * weights[id * n + i];
-        //sum += input_neuron[i + 1] * weights[id * n + i + 1];
-        //sum += input_neuron[i + 2] * weights[id * n + i + 2];
-        //sum += input_neuron[i + 3] * weights[id * n + i + 3];
         sum += dot(input_neuron[i], weights[id * n + i]);
     }
     output_neuron[id] = ReLU(sum);

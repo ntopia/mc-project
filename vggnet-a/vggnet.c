@@ -33,7 +33,7 @@ static void pooling_layer_normal(float* inputs, float* outputs, int N, int D) {
 
 static void pooling_layer(float* inputs, float* outputs, int N, int D) {
     cl_mem buf_input = clCreateBuffer(context, CL_MEM_USE_HOST_PTR, sizeof(float) * D * N * N * 4, (void*)inputs, NULL);
-    cl_mem buf_output = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * D * N * N, NULL, NULL);
+    cl_mem buf_output = clCreateBuffer(context, CL_MEM_USE_HOST_PTR, sizeof(float) * D * N * N, (void*)outputs, NULL);
 
     cl_kernel kernel = clCreateKernel(program, "pooling_layer", NULL);
     clSetKernelArg(kernel, 0, sizeof(cl_mem), (void*)&buf_input);
@@ -44,9 +44,11 @@ static void pooling_layer(float* inputs, float* outputs, int N, int D) {
     size_t global_work_size = D;
     size_t global_work_offset = 0;
     size_t local_work_size = D / 16;
-    clEnqueueNDRangeKernel(cmd_queue, kernel, 1, &global_work_offset, &global_work_size, &local_work_size, 0, NULL, NULL);
+    cl_event event;
+    clEnqueueNDRangeKernel(cmd_queue, kernel, 1, &global_work_offset, &global_work_size, &local_work_size, 0, NULL, &event);
+    clWaitForEvents(1, &event);
 
-    clEnqueueReadBuffer(cmd_queue, buf_output, CL_TRUE, 0, sizeof(float) * D * N * N, (void*)outputs, 0, NULL, NULL);
+    //clEnqueueReadBuffer(cmd_queue, buf_output, CL_TRUE, 0, sizeof(float) * D * N * N, (void*)outputs, 0, NULL, NULL);
 }
 
 static void convolution3x3(float* input, float* output, float* filter, int N) {
@@ -90,7 +92,7 @@ static void convolution_layer(float* inputs, float* outputs, float* filters, flo
     cl_mem buf_inputs = clCreateBuffer(context, CL_MEM_USE_HOST_PTR, sizeof(float) * N * N * D1, (void*)inputs, NULL);
     cl_mem buf_filters = clCreateBuffer(context, CL_MEM_USE_HOST_PTR, sizeof(float) * 3 * 3 * D1 * D2, (void*)filters, NULL);
     cl_mem buf_biases = clCreateBuffer(context, CL_MEM_USE_HOST_PTR, sizeof(float) * D2, (void*)biases, NULL);
-    cl_mem buf_outputs = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * N * N * D2, NULL, NULL);
+    cl_mem buf_outputs = clCreateBuffer(context, CL_MEM_USE_HOST_PTR, sizeof(float) * N * N * D2, (void*)outputs, NULL);
 
     cl_kernel kernel = clCreateKernel(program, "convolution_layer", NULL);
     clSetKernelArg(kernel, 0, sizeof(cl_mem), (void*)&buf_inputs);
@@ -104,9 +106,11 @@ static void convolution_layer(float* inputs, float* outputs, float* filters, flo
     size_t global_work_size = D2;
     size_t global_work_offset = 0;
     size_t local_work_size = D2 / 16;
-    clEnqueueNDRangeKernel(cmd_queue, kernel, 1, &global_work_offset, &global_work_size, &local_work_size, 0, NULL, NULL);
+    cl_event event;
+    clEnqueueNDRangeKernel(cmd_queue, kernel, 1, &global_work_offset, &global_work_size, &local_work_size, 0, NULL, &event);
+    clWaitForEvents(1, &event);
 
-    clEnqueueReadBuffer(cmd_queue, buf_outputs, CL_TRUE, 0, sizeof(float) * N * N * D2, (void*)outputs, 0, NULL, NULL);
+    //clEnqueueReadBuffer(cmd_queue, buf_output, CL_TRUE, 0, sizeof(float) * N * N * D2, (void*)outputs, 0, NULL, NULL);
 }
 
 static void fc_layer_normal(float* input_neuron, float* output_neuron, float* weights, float* biases, int N, int M) {
@@ -123,7 +127,7 @@ static void fc_layer(float* input_neuron, float* output_neuron, float* weights, 
     cl_mem buf_input = clCreateBuffer(context, CL_MEM_USE_HOST_PTR, sizeof(float) * N, (void*)input_neuron, NULL);
     cl_mem buf_weights = clCreateBuffer(context, CL_MEM_USE_HOST_PTR, sizeof(float) * N * M, (void*)weights, NULL);
     cl_mem buf_biases = clCreateBuffer(context, CL_MEM_USE_HOST_PTR, sizeof(float) * M, (void*)biases, NULL);
-    cl_mem buf_output = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * M, NULL, NULL);
+    cl_mem buf_output = clCreateBuffer(context, CL_MEM_USE_HOST_PTR, sizeof(float) * M, (void*)output_neuron, NULL);
 
     cl_kernel kernel = clCreateKernel(program, "fc_layer", NULL);
     clSetKernelArg(kernel, 0, sizeof(cl_mem), (void*)&buf_input);
@@ -136,9 +140,11 @@ static void fc_layer(float* input_neuron, float* output_neuron, float* weights, 
     size_t global_work_size = M;
     size_t global_work_offset = 0;
     size_t local_work_size = M / 8;
-    clEnqueueNDRangeKernel(cmd_queue, kernel, 1, &global_work_offset, &global_work_size, &local_work_size, 0, NULL, NULL);
+    cl_event event;
+    clEnqueueNDRangeKernel(cmd_queue, kernel, 1, &global_work_offset, &global_work_size, &local_work_size, 0, NULL, &event);
+    clWaitForEvents(1, &event);
 
-    clEnqueueReadBuffer(cmd_queue, buf_output, CL_TRUE, 0, sizeof(float) * M, (void*)output_neuron, 0, NULL, NULL);
+    //clEnqueueReadBuffer(cmd_queue, buf_output, CL_TRUE, 0, sizeof(float) * M, (void*)output_neuron, 0, NULL, NULL);
 }
 
 static void softmax(float* output) {
