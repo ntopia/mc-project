@@ -4,32 +4,11 @@
 #include <math.h>
 #include <CL/cl.h>
 
+#define ReLU(x) (((x) > 0) ? (x) : 0)
+
 cl_context context;
 cl_program program;
 cl_command_queue cmd_queue;
-
-static void pooling2x2(float* input, float* output, int N) {
-    for (int i = 0; i < N; ++i) {
-        for (int j = 0; j < N; ++j) {
-            float max = 0;
-            for (int k = 0; k < 2; ++k) {
-                for (int l = 0; l < 2; ++l) {
-                    float pixel = input[(i * 2 + k) * 2 * N + j * 2 + l];
-                    max = (max > pixel) ? max : pixel;
-                }
-            }
-            output[i * N + j] = max;
-        }
-    }
-}
-
-static void pooling_layer_normal(float* inputs, float* outputs, int N, int D) {
-    for (int i = 0; i < D; ++i) {
-        float* input = inputs + i * N * N * 4;
-        float* output = outputs + i * N * N;
-        pooling2x2(input, output, N);
-    }
-}
 
 static void pooling_layer(float* inputs, float* outputs, int N, int D) {
     cl_mem buf_input = clCreateBuffer(context, CL_MEM_USE_HOST_PTR, sizeof(float) * D * N * N * 4, (void*)inputs, NULL);
@@ -49,43 +28,6 @@ static void pooling_layer(float* inputs, float* outputs, int N, int D) {
     clWaitForEvents(1, &event);
 
     //clEnqueueReadBuffer(cmd_queue, buf_output, CL_TRUE, 0, sizeof(float) * D * N * N, (void*)outputs, 0, NULL, NULL);
-}
-
-static void convolution3x3(float* input, float* output, float* filter, int N) {
-    for (int i = 0; i < N; ++i) {
-        for (int j = 0; j < N; j++) {
-            float sum = 0;
-            for (int k = 0; k < 3; ++k) {
-                for (int l = 0; l < 3; ++l) {
-                    int x = i + k - 1;
-                    int y = j + l - 1; 
-                    if (x >= 0 && x < N && y >= 0 && y < N) {
-                        sum += input[x * N + y] * filter[k * 3 + l];
-                    }
-                }
-            }
-            output[i * N + j] += sum;
-        }
-    }
-}
-
-#define ReLU(x) (((x) > 0) ? (x) : 0)
-static void convolution_layer_normal(float* inputs, float* outputs, float* filters, float* biases, int N, int D1, int D2) {
-    memset(outputs, 0, sizeof(float) * N * N * D2);
-
-    for (int j = 0; j < D2; ++j) {
-        float* output = outputs + N * N * j;
-        for (int i = 0; i < D1; ++i) {
-            float* input = inputs + N * N * i;
-            float* filter = filters + 3 * 3 * (j * D1 + i);
-            convolution3x3(input, output, filter, N); 
-        }
-
-        float bias = biases[j];
-        for (int k = 0; k < N * N; ++k) {
-            output[k] = ReLU(output[k] + bias);
-        }
-    }
 }
 
 static void convolution_layer(float* inputs, float* outputs, float* filters, float* biases, int N, int D1, int D2) {
@@ -111,16 +53,6 @@ static void convolution_layer(float* inputs, float* outputs, float* filters, flo
     clWaitForEvents(1, &event);
 
     //clEnqueueReadBuffer(cmd_queue, buf_output, CL_TRUE, 0, sizeof(float) * N * N * D2, (void*)outputs, 0, NULL, NULL);
-}
-
-static void fc_layer_normal(float* input_neuron, float* output_neuron, float* weights, float* biases, int N, int M) {
-    for (int j = 0; j < M; ++j) {
-        float sum = biases[j];
-        for (int i = 0; i < N; ++i) {
-            sum += input_neuron[i] * weights[j * N + i];
-        }
-        output_neuron[j] = ReLU(sum);
-    }
 }
 
 static void fc_layer(float* input_neuron, float* output_neuron, float* weights, float* biases, int N, int M) {
