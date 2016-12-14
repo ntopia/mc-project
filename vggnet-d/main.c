@@ -7,7 +7,7 @@
 #include "network.h"
 #include "class_name.h"
 
-void vggnet(float * images, float * network, int * labels, float * confidences, int num_images, int task_id);
+void vggnet(float * images, float * network, int * labels, float * confidences, int images_st, int images_ed);
 
 int timespec_subtract(struct timespec*, struct timespec*, struct timespec*);
 
@@ -81,20 +81,23 @@ int main(int argc, char** argv) {
     fclose(io_file);
   }
 
+  int images_st = (num_images / 4) * task_id + ((num_images % 4) < task_id ? num_images % 4 : task_id);
+  int images_ed = images_st + (num_images / 4) + (task_id < (num_images % 4) ? 1 : 0);
+
   MPI_Barrier(MPI_COMM_WORLD);
   clock_gettime(CLOCK_MONOTONIC, &start);
-  vggnet(images, network, labels, confidences, num_images, task_id);
+  vggnet(images, network, labels, confidences, images_st, images_ed);
   MPI_Barrier(MPI_COMM_WORLD);
   clock_gettime(CLOCK_MONOTONIC, &end);
   timespec_subtract(&spent, &end, &start);
 
+  for(i = images_st; i < images_ed; i++)
+  {
+    printf("%s :%s : %.3f\n", image_files[i], class_name[labels[i]], confidences[i]);
+  }
+
   if(task_id == 0)
   {
-    for(i = 0; i < num_images; i++)
-    {
-      //printf("%s :%s : %.3f\n", image_files[i], class_name[labels[i]], confidences[i]);
-    }
-
     printf("Elapsed time: %ld.%03ld sec\n", spent.tv_sec, spent.tv_nsec/1000/1000);
   }
   MPI_Finalize();

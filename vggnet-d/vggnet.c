@@ -321,7 +321,7 @@ void* vggnet_thread(void* arg) {
     return NULL;
 }
 
-void vggnet(float* images, float* network, int* labels, float* confidences, int num_images, int task_id) {
+void vggnet(float* images, float* network, int* labels, float* confidences, int images_st, int images_ed) {
     if (init_opencl() != 0) {
         return;
     }
@@ -368,16 +368,12 @@ void vggnet(float* images, float* network, int* labels, float* confidences, int 
     b3 = get_param(&network, 1000);
 
 
-    int elapsed = 0;
-    for (int k = 0; k < task_id; ++k) {
-        for (int l = 0; l < 4; ++l) {
-            elapsed += (num_images / 16) + ((k * 4 + l) < (num_images % 16) ? 1 : 0);
-        }
-    }
+    int num_images = images_ed - images_st;
+    int elapsed = images_st;
     pthread_t threads[3];
     vggnet_thread_args arg[4];
     for (int k = 0; k < 4; ++k) {
-        int sz = (num_images / 16) + ((task_id * 4 + k) < (num_images % 16) ? 1 : 0);
+        int sz = (num_images / 4) + (k < (num_images % 4) ? 1 : 0);
         arg[k].images_st = elapsed;
         arg[k].images_ed = elapsed + sz;
         arg[k].thread_id = k;
