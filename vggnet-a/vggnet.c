@@ -20,14 +20,12 @@ static void pooling_layer(float* inputs, float* outputs, int N, int D) {
     clSetKernelArg(kernel, 2, sizeof(int), (void*)&N);
     clSetKernelArg(kernel, 3, sizeof(int), (void*)&D);
 
-    size_t global_work_size = D;
+    size_t global_work_size = D / 4;
     size_t global_work_offset = 0;
-    size_t local_work_size = D / 16;
+    size_t local_work_size = D / 4 / 16;
     cl_event event;
     clEnqueueNDRangeKernel(cmd_queue, kernel, 1, &global_work_offset, &global_work_size, &local_work_size, 0, NULL, &event);
     clWaitForEvents(1, &event);
-
-    //clEnqueueReadBuffer(cmd_queue, buf_output, CL_TRUE, 0, sizeof(float) * D * N * N, (void*)outputs, 0, NULL, NULL);
 }
 
 static void convolution_layer(float* inputs, float* outputs, float* filters, float* biases, int N, int D1, int D2) {
@@ -45,14 +43,12 @@ static void convolution_layer(float* inputs, float* outputs, float* filters, flo
     clSetKernelArg(kernel, 5, sizeof(int), (void*)&D1);
     clSetKernelArg(kernel, 6, sizeof(int), (void*)&D2);
 
-    size_t global_work_size = D2;
+    size_t global_work_size = D2 / 4;
     size_t global_work_offset = 0;
-    size_t local_work_size = D2 / 16;
+    size_t local_work_size = D2 / 4 / 16;
     cl_event event;
     clEnqueueNDRangeKernel(cmd_queue, kernel, 1, &global_work_offset, &global_work_size, &local_work_size, 0, NULL, &event);
     clWaitForEvents(1, &event);
-
-    //clEnqueueReadBuffer(cmd_queue, buf_output, CL_TRUE, 0, sizeof(float) * N * N * D2, (void*)outputs, 0, NULL, NULL);
 }
 
 static void fc_layer(float* input_neuron, float* output_neuron, float* weights, float* biases, int N, int M) {
@@ -75,8 +71,6 @@ static void fc_layer(float* input_neuron, float* output_neuron, float* weights, 
     cl_event event;
     clEnqueueNDRangeKernel(cmd_queue, kernel, 1, &global_work_offset, &global_work_size, &local_work_size, 0, NULL, &event);
     clWaitForEvents(1, &event);
-
-    //clEnqueueReadBuffer(cmd_queue, buf_output, CL_TRUE, 0, sizeof(float) * M, (void*)output_neuron, 0, NULL, NULL);
 }
 
 static void softmax(float* output) {
