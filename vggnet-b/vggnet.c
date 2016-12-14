@@ -21,9 +21,9 @@ static void pooling_layer(float* inputs, float* outputs, int N, int D) {
     clSetKernelArg(kernel, 2, sizeof(int), (void*)&N);
     clSetKernelArg(kernel, 3, sizeof(int), (void*)&D);
 
-    size_t global_work_size[] = { N * N, D };
+    size_t global_work_size[] = { D, N * N };
     size_t global_work_offset[] = { 0, 0 };
-    size_t local_work_size[] = { 1, 32 };
+    size_t local_work_size[] = { 1, N };
     clEnqueueNDRangeKernel(cmd_queue_gpu, kernel, 2, global_work_offset, global_work_size, local_work_size, 0, NULL, NULL);
 
     clEnqueueReadBuffer(cmd_queue_gpu, buf_gpu_outputs, CL_TRUE, 0, sizeof(float) * D * N * N, (void*)outputs, 0, NULL, NULL);
