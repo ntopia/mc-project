@@ -10,14 +10,14 @@ cl_device_id device_cpu, device_gpu;
 cl_context context_cpu, context_gpu;
 cl_program program_cpu, program_gpu;
 cl_command_queue cmd_queue_cpu, cmd_queue_gpu;
+cl_mem buf_gpu_outputs;
 
 static void pooling_layer(float* inputs, float* outputs, int N, int D) {
     cl_mem buf_input = clCreateBuffer(context_gpu, CL_MEM_USE_HOST_PTR, sizeof(float) * D * N * N * 4, (void*)inputs, NULL);
-    cl_mem buf_output = clCreateBuffer(context_gpu, CL_MEM_READ_WRITE, sizeof(float) * D * N * N, NULL, NULL);
 
     cl_kernel kernel = clCreateKernel(program_gpu, "pooling_layer", NULL);
     clSetKernelArg(kernel, 0, sizeof(cl_mem), (void*)&buf_input);
-    clSetKernelArg(kernel, 1, sizeof(cl_mem), (void*)&buf_output);
+    clSetKernelArg(kernel, 1, sizeof(cl_mem), (void*)&buf_gpu_outputs);
     clSetKernelArg(kernel, 2, sizeof(int), (void*)&N);
     clSetKernelArg(kernel, 3, sizeof(int), (void*)&D);
 
@@ -26,22 +26,20 @@ static void pooling_layer(float* inputs, float* outputs, int N, int D) {
     size_t local_work_size[] = { 1, 32 };
     clEnqueueNDRangeKernel(cmd_queue_gpu, kernel, 2, global_work_offset, global_work_size, local_work_size, 0, NULL, NULL);
 
-    clEnqueueReadBuffer(cmd_queue_gpu, buf_output, CL_TRUE, 0, sizeof(float) * D * N * N, (void*)outputs, 0, NULL, NULL);
+    clEnqueueReadBuffer(cmd_queue_gpu, buf_gpu_outputs, CL_TRUE, 0, sizeof(float) * D * N * N, (void*)outputs, 0, NULL, NULL);
     clReleaseMemObject(buf_input);
-    clReleaseMemObject(buf_output);
 }
 
 static void convolution_layer(float* inputs, float* outputs, float* filters, float* biases, int N, int D1, int D2) {
     cl_mem buf_inputs = clCreateBuffer(context_gpu, CL_MEM_USE_HOST_PTR, sizeof(float) * N * N * D1, (void*)inputs, NULL);
     cl_mem buf_filters = clCreateBuffer(context_gpu, CL_MEM_USE_HOST_PTR, sizeof(float) * 3 * 3 * D1 * D2, (void*)filters, NULL);
     cl_mem buf_biases = clCreateBuffer(context_gpu, CL_MEM_USE_HOST_PTR, sizeof(float) * D2, (void*)biases, NULL);
-    cl_mem buf_outputs = clCreateBuffer(context_gpu, CL_MEM_READ_WRITE, sizeof(float) * N * N * D2, NULL, NULL);
 
     cl_kernel kernel = clCreateKernel(program_gpu, "convolution_layer", NULL);
     clSetKernelArg(kernel, 0, sizeof(cl_mem), (void*)&buf_inputs);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), (void*)&buf_filters);
     clSetKernelArg(kernel, 2, sizeof(cl_mem), (void*)&buf_biases);
-    clSetKernelArg(kernel, 3, sizeof(cl_mem), (void*)&buf_outputs);
+    clSetKernelArg(kernel, 3, sizeof(cl_mem), (void*)&buf_gpu_outputs);
     clSetKernelArg(kernel, 4, sizeof(int), (void*)&N);
     clSetKernelArg(kernel, 5, sizeof(int), (void*)&D1);
     clSetKernelArg(kernel, 6, sizeof(int), (void*)&D2);
@@ -52,11 +50,10 @@ static void convolution_layer(float* inputs, float* outputs, float* filters, flo
     cl_event event;
     clEnqueueNDRangeKernel(cmd_queue_gpu, kernel, 2, global_work_offset, global_work_size, local_work_size, 0, NULL, &event);
 
-    clEnqueueReadBuffer(cmd_queue_gpu, buf_outputs, CL_TRUE, 0, sizeof(float) * N * N * D2, (void*)outputs, 0, NULL, NULL);
+    clEnqueueReadBuffer(cmd_queue_gpu, buf_gpu_outputs, CL_TRUE, 0, sizeof(float) * N * N * D2, (void*)outputs, 0, NULL, NULL);
     clReleaseMemObject(buf_inputs);
     clReleaseMemObject(buf_filters);
     clReleaseMemObject(buf_biases);
-    clReleaseMemObject(buf_outputs);
 }
 
 static void fc_layer(float* input_neuron, float* output_neuron, float* weights, float* biases, int N, int M) {
@@ -168,6 +165,7 @@ int init_opencl() {
 
     cmd_queue_cpu = clCreateCommandQueue(context_cpu, device_cpu, 0, NULL);
     cmd_queue_gpu = clCreateCommandQueue(context_gpu, device_gpu, 0, NULL);
+    buf_gpu_outputs = clCreateBuffer(context_gpu, CL_MEM_READ_WRITE, sizeof(float) * 224 * 224 * 64, NULL, NULL);
     return 0;
 }
 
