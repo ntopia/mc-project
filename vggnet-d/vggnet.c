@@ -213,7 +213,6 @@ void* vggnet_thread(void* arg) {
     vggnet_thread_args* targ = (vggnet_thread_args*)arg;
     int images_st = targ->images_st, images_ed = targ->images_ed;
     int thread_id = targ->thread_id;
-    printf("Thread #%d  :  %d ~ %d\n", thread_id, images_st, images_ed);
 
     // Convolution layers
     float *c1_1, *c1_2, *c2_1, *c2_2, *c3_1, *c3_2, *c3_3,

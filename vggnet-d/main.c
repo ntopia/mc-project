@@ -81,23 +81,49 @@ int main(int argc, char** argv) {
     fclose(io_file);
   }
 
-  int images_st = (num_images / 4) * task_id + ((num_images % 4) < task_id ? num_images % 4 : task_id);
-  int images_ed = images_st + (num_images / 4) + (task_id < (num_images % 4) ? 1 : 0);
+  int images_st[4], images_cnt[4];
+  for(i = 0; i < 4; i++)
+  {
+    images_cnt[i] = (num_images / 4) + (i < (num_images % 4) ? 1 : 0);
+    images_st[i] = (i == 0) ? 0 : images_st[i - 1] + images_cnt[i - 1];
+  }
 
   MPI_Barrier(MPI_COMM_WORLD);
   clock_gettime(CLOCK_MONOTONIC, &start);
-  vggnet(images, network, labels, confidences, images_st, images_ed);
+  vggnet(images, network, labels, confidences, images_st[task_id], images_st[task_id] + images_cnt[task_id]);
   MPI_Barrier(MPI_COMM_WORLD);
   clock_gettime(CLOCK_MONOTONIC, &end);
   timespec_subtract(&spent, &end, &start);
 
-  for(i = images_st; i < images_ed; i++)
+  MPI_Status status;
+  if(task_id > 0)
   {
-    printf("%s :%s : %.3f\n", image_files[i], class_name[labels[i]], confidences[i]);
+    MPI_Send(labels + images_st[task_id], images_cnt[task_id], MPI_INT, 0, 11, MPI_COMM_WORLD);
+    MPI_Send(confidences + images_st[task_id], images_cnt[task_id], MPI_FLOAT, 0, 11, MPI_COMM_WORLD);
+    MPI_Recv(labels, num_images, MPI_INT, 0, 22, MPI_COMM_WORLD, &status);
+    MPI_Recv(confidences, num_images, MPI_FLOAT, 0, 22, MPI_COMM_WORLD, &status);
+  }
+  else
+  {
+    for (i = 1; i < 4; i++)
+    {
+      MPI_Recv(labels + images_st[i], images_cnt[i], MPI_INT, i, 11, MPI_COMM_WORLD, &status);
+      MPI_Recv(confidences + images_st[i], images_cnt[i], MPI_FLOAT, i, 11, MPI_COMM_WORLD, &status);
+    }
+    for (i = 1; i < 4; i++)
+    {
+      MPI_Send(labels, num_images, MPI_INT, i, 22, MPI_COMM_WORLD);
+      MPI_Send(confidences, num_images, MPI_FLOAT, i, 22, MPI_COMM_WORLD);
+    }
   }
 
   if(task_id == 0)
   {
+    for(i = 0; i < num_images; i++)
+    {
+      printf("%s :%s : %.3f\n", image_files[i], class_name[labels[i]], confidences[i]);
+    }
+
     printf("Elapsed time: %ld.%03ld sec\n", spent.tv_sec, spent.tv_nsec/1000/1000);
   }
   MPI_Finalize();
