@@ -1,6 +1,6 @@
 
 CC=gcc
-CFLAGS=-Wall -g -O2 -std=gnu99
+CFLAGS=-Wall -g -O2 -std=gnu99 -march=native -msse -mfpmath=sse -funroll-loops -ftree-vectorize
 
 LIBS = -lm -lrt -lOpenCL
 LDFLAGS = ${LIBS}
