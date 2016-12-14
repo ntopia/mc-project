@@ -44,9 +44,9 @@ static void convolution_layer(float* inputs, float* outputs, float* filters, flo
     clSetKernelArg(kernel, 5, sizeof(int), (void*)&D1);
     clSetKernelArg(kernel, 6, sizeof(int), (void*)&D2);
 
-    size_t global_work_size[] = { N * N, D2 };
+    size_t global_work_size[] = { D2, N * N };
     size_t global_work_offset[] = { 0, 0 };
-    size_t local_work_size[] = { 1, 32 };
+    size_t local_work_size[] = { 1, N };
     cl_event event;
     clEnqueueNDRangeKernel(cmd_queue_gpu, kernel, 2, global_work_offset, global_work_size, local_work_size, 0, NULL, &event);
 

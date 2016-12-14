@@ -21,44 +21,32 @@ __kernel void convolution_layer(    __global const float* restrict inputs,
                                     __constant const float* restrict biases,
                                     __global float* restrict outputs,
                                     int n, int d1, int d2) {
-    int i = get_global_id(0) / n;
-    int j = get_global_id(0) % n;
-    int qid = get_global_id(1);
-    int lid = get_local_id(1);
-    int localsz = get_local_size(1);
-    int p, q, k, l, x, y;
+
+    int opic = get_global_id(0);
+    int i = get_group_id(1);
+    int j = get_global_id(1) % n;
+    int p, k, l, x, y;
     float sum = 0, v;
-    __local float input[512][3][3];
+    __local float input[256];
 
-    int lmt = d1 * 3 * 3;
-    for (p = lid; p < lmt; p += 32) {
-        q = p / 9;
-        k = (p % 9) / 3;
-        l = p % 3;
+    for (k = 0; k < 3; ++k) {
         x = i + k - 1;
-        y = j + l - 1;
-        if (0 <= x && x < n && 0 <= y && y < n) {
-            v = inputs[n * n * q + x * n + y];
-        }
-        else {
-            v = 0;
-        }
-        input[q][k][l] = v;
-    }
-    barrier(CLK_LOCAL_MEM_FENCE);
+        for (p = 0; p < d1; p++) {
+            if (0 <= x && x < n) {
+                v = inputs[n * n * p + x * n + j];
+            }
+            else {
+                v = 0;
+            }
+            input[j] = v;
+            barrier(CLK_LOCAL_MEM_FENCE);
 
-    for (p = 0; p < d1; ++p) {
-        sum += input[p][0][0] * filters[3 * 3 * (qid * d1 + p) + 0 * 3 + 0];
-        sum += input[p][0][1] * filters[3 * 3 * (qid * d1 + p) + 0 * 3 + 1];
-        sum += input[p][0][2] * filters[3 * 3 * (qid * d1 + p) + 0 * 3 + 2];
-        sum += input[p][1][0] * filters[3 * 3 * (qid * d1 + p) + 1 * 3 + 0];
-        sum += input[p][1][1] * filters[3 * 3 * (qid * d1 + p) + 1 * 3 + 1];
-        sum += input[p][1][2] * filters[3 * 3 * (qid * d1 + p) + 1 * 3 + 2];
-        sum += input[p][2][0] * filters[3 * 3 * (qid * d1 + p) + 2 * 3 + 0];
-        sum += input[p][2][1] * filters[3 * 3 * (qid * d1 + p) + 2 * 3 + 1];
-        sum += input[p][2][2] * filters[3 * 3 * (qid * d1 + p) + 2 * 3 + 2];
+            sum += (j - 1 >= 0) ? input[j - 1] * filters[3 * 3 * (opic * d1 + p) + k * 3 + 0] : 0;
+            sum +=                input[j]     * filters[3 * 3 * (opic * d1 + p) + k * 3 + 1];
+            sum += (j + 1 < n) ?  input[j + 1] * filters[3 * 3 * (opic * d1 + p) + k * 3 + 2] : 0;
+        }
     }
-    outputs[n * n * qid + i * n + j] = ReLU(sum + biases[qid]);
+    outputs[n * n * opic + i * n + j] = ReLU(sum + biases[opic]);
 }
 
 __kernel void fc_layer( __constant const float4* input_neuron,
