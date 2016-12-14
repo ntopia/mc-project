@@ -6,76 +6,82 @@
 
 #define ReLU(x) (((x) > 0) ? (x) : 0)
 
-cl_device_id device_cpu, device_gpu;
-cl_context context_cpu, context_gpu;
-cl_program program_cpu, program_gpu;
-cl_command_queue cmd_queue_cpu, cmd_queue_gpu;
-cl_mem buf_gpu_outputs;
+typedef struct opencl_context {
+    cl_device_id device;
+    cl_context context;
+    cl_program program;
+    cl_command_queue cmd_queue;
+    cl_mem buf_outputs;
+    cl_kernel kernel_pooling, kernel_convolution, kernel_fc;
+} opencl_context;
+
+opencl_context cpu, gpu;
 
 static void pooling_layer(float* inputs, float* outputs, int N, int D) {
-    cl_mem buf_input = clCreateBuffer(context_gpu, CL_MEM_USE_HOST_PTR, sizeof(float) * D * N * N * 4, (void*)inputs, NULL);
+    cl_mem buf_input = clCreateBuffer(gpu.context, CL_MEM_USE_HOST_PTR, sizeof(float) * D * N * N * 4, (void*)inputs, NULL);
 
-    cl_kernel kernel = clCreateKernel(program_gpu, "pooling_layer", NULL);
-    clSetKernelArg(kernel, 0, sizeof(cl_mem), (void*)&buf_input);
-    clSetKernelArg(kernel, 1, sizeof(cl_mem), (void*)&buf_gpu_outputs);
-    clSetKernelArg(kernel, 2, sizeof(int), (void*)&N);
-    clSetKernelArg(kernel, 3, sizeof(int), (void*)&D);
+    clSetKernelArg(gpu.kernel_pooling, 0, sizeof(cl_mem), (void*)&buf_input);
+    clSetKernelArg(gpu.kernel_pooling, 1, sizeof(cl_mem), (void*)&(gpu.buf_outputs));
+    clSetKernelArg(gpu.kernel_pooling, 2, sizeof(int), (void*)&N);
+    clSetKernelArg(gpu.kernel_pooling, 3, sizeof(int), (void*)&D);
 
     size_t global_work_size[] = { D, N * N };
     size_t global_work_offset[] = { 0, 0 };
     size_t local_work_size[] = { 1, N };
-    clEnqueueNDRangeKernel(cmd_queue_gpu, kernel, 2, global_work_offset, global_work_size, local_work_size, 0, NULL, NULL);
+    clEnqueueNDRangeKernel(gpu.cmd_queue, gpu.kernel_pooling, 2, global_work_offset, global_work_size, local_work_size, 0, NULL, NULL);
 
-    clEnqueueReadBuffer(cmd_queue_gpu, buf_gpu_outputs, CL_TRUE, 0, sizeof(float) * D * N * N, (void*)outputs, 0, NULL, NULL);
+    clEnqueueReadBuffer(gpu.cmd_queue, gpu.buf_outputs, CL_TRUE, 0, sizeof(float) * D * N * N, (void*)outputs, 0, NULL, NULL);
     clReleaseMemObject(buf_input);
 }
 
 static void convolution_layer(float* inputs, float* outputs, float* filters, float* biases, int N, int D1, int D2) {
-    cl_mem buf_inputs = clCreateBuffer(context_gpu, CL_MEM_USE_HOST_PTR, sizeof(float) * N * N * D1, (void*)inputs, NULL);
-    cl_mem buf_filters = clCreateBuffer(context_gpu, CL_MEM_USE_HOST_PTR, sizeof(float) * 3 * 3 * D1 * D2, (void*)filters, NULL);
-    cl_mem buf_biases = clCreateBuffer(context_gpu, CL_MEM_USE_HOST_PTR, sizeof(float) * D2, (void*)biases, NULL);
+    cl_mem buf_inputs = clCreateBuffer(gpu.context, CL_MEM_USE_HOST_PTR, sizeof(float) * N * N * D1, (void*)inputs, NULL);
+    cl_mem buf_filters = clCreateBuffer(gpu.context, CL_MEM_USE_HOST_PTR, sizeof(float) * 3 * 3 * D1 * D2, (void*)filters, NULL);
+    cl_mem buf_biases = clCreateBuffer(gpu.context, CL_MEM_USE_HOST_PTR, sizeof(float) * D2, (void*)biases, NULL);
 
-    cl_kernel kernel = clCreateKernel(program_gpu, "convolution_layer", NULL);
-    clSetKernelArg(kernel, 0, sizeof(cl_mem), (void*)&buf_inputs);
-    clSetKernelArg(kernel, 1, sizeof(cl_mem), (void*)&buf_filters);
-    clSetKernelArg(kernel, 2, sizeof(cl_mem), (void*)&buf_biases);
-    clSetKernelArg(kernel, 3, sizeof(cl_mem), (void*)&buf_gpu_outputs);
-    clSetKernelArg(kernel, 4, sizeof(int), (void*)&N);
-    clSetKernelArg(kernel, 5, sizeof(int), (void*)&D1);
-    clSetKernelArg(kernel, 6, sizeof(int), (void*)&D2);
+    clSetKernelArg(gpu.kernel_convolution, 0, sizeof(cl_mem), (void*)&buf_inputs);
+    clSetKernelArg(gpu.kernel_convolution, 1, sizeof(cl_mem), (void*)&buf_filters);
+    clSetKernelArg(gpu.kernel_convolution, 2, sizeof(cl_mem), (void*)&buf_biases);
+    clSetKernelArg(gpu.kernel_convolution, 3, sizeof(cl_mem), (void*)&(gpu.buf_outputs));
+    clSetKernelArg(gpu.kernel_convolution, 4, sizeof(int), (void*)&N);
+    clSetKernelArg(gpu.kernel_convolution, 5, sizeof(int), (void*)&D1);
+    clSetKernelArg(gpu.kernel_convolution, 6, sizeof(int), (void*)&D2);
 
     size_t global_work_size[] = { D2, N * N };
     size_t global_work_offset[] = { 0, 0 };
     size_t local_work_size[] = { 1, N };
-    cl_event event;
-    clEnqueueNDRangeKernel(cmd_queue_gpu, kernel, 2, global_work_offset, global_work_size, local_work_size, 0, NULL, &event);
+    clEnqueueNDRangeKernel(gpu.cmd_queue, gpu.kernel_convolution, 2, global_work_offset, global_work_size, local_work_size, 0, NULL, NULL);
+    clEnqueueReadBuffer(gpu.cmd_queue, gpu.buf_outputs, CL_TRUE, 0, sizeof(float) * N * N * D2, (void*)outputs, 0, NULL, NULL);
 
-    clEnqueueReadBuffer(cmd_queue_gpu, buf_gpu_outputs, CL_TRUE, 0, sizeof(float) * N * N * D2, (void*)outputs, 0, NULL, NULL);
     clReleaseMemObject(buf_inputs);
     clReleaseMemObject(buf_filters);
     clReleaseMemObject(buf_biases);
 }
 
 static void fc_layer(float* input_neuron, float* output_neuron, float* weights, float* biases, int N, int M) {
-    cl_mem buf_input = clCreateBuffer(context_cpu, CL_MEM_USE_HOST_PTR, sizeof(float) * N, (void*)input_neuron, NULL);
-    cl_mem buf_weights = clCreateBuffer(context_cpu, CL_MEM_USE_HOST_PTR, sizeof(float) * N * M, (void*)weights, NULL);
-    cl_mem buf_biases = clCreateBuffer(context_cpu, CL_MEM_USE_HOST_PTR, sizeof(float) * M, (void*)biases, NULL);
-    cl_mem buf_output = clCreateBuffer(context_cpu, CL_MEM_USE_HOST_PTR, sizeof(float) * M, (void*)output_neuron, NULL);
+    cl_mem buf_inputs = clCreateBuffer(cpu.context, CL_MEM_USE_HOST_PTR, sizeof(float) * N, (void*)input_neuron, NULL);
+    cl_mem buf_weights = clCreateBuffer(cpu.context, CL_MEM_USE_HOST_PTR, sizeof(float) * N * M, (void*)weights, NULL);
+    cl_mem buf_biases = clCreateBuffer(cpu.context, CL_MEM_USE_HOST_PTR, sizeof(float) * M, (void*)biases, NULL);
+    cl_mem buf_outputs = clCreateBuffer(cpu.context, CL_MEM_USE_HOST_PTR, sizeof(float) * M, (void*)output_neuron, NULL);
 
-    cl_kernel kernel = clCreateKernel(program_cpu, "fc_layer", NULL);
-    clSetKernelArg(kernel, 0, sizeof(cl_mem), (void*)&buf_input);
-    clSetKernelArg(kernel, 1, sizeof(cl_mem), (void*)&buf_weights);
-    clSetKernelArg(kernel, 2, sizeof(cl_mem), (void*)&buf_biases);
-    clSetKernelArg(kernel, 3, sizeof(cl_mem), (void*)&buf_output);
-    clSetKernelArg(kernel, 4, sizeof(int), (void*)&N);
-    clSetKernelArg(kernel, 5, sizeof(int), (void*)&M);
+    clSetKernelArg(cpu.kernel_fc, 0, sizeof(cl_mem), (void*)&buf_inputs);
+    clSetKernelArg(cpu.kernel_fc, 1, sizeof(cl_mem), (void*)&buf_weights);
+    clSetKernelArg(cpu.kernel_fc, 2, sizeof(cl_mem), (void*)&buf_biases);
+    clSetKernelArg(cpu.kernel_fc, 3, sizeof(cl_mem), (void*)&buf_outputs);
+    clSetKernelArg(cpu.kernel_fc, 4, sizeof(int), (void*)&N);
+    clSetKernelArg(cpu.kernel_fc, 5, sizeof(int), (void*)&M);
 
     size_t global_work_size = M;
     size_t global_work_offset = 0;
     size_t local_work_size = M / 8;
     cl_event event;
-    clEnqueueNDRangeKernel(cmd_queue_cpu, kernel, 1, &global_work_offset, &global_work_size, &local_work_size, 0, NULL, &event);
+    clEnqueueNDRangeKernel(cpu.cmd_queue, cpu.kernel_fc, 1, &global_work_offset, &global_work_size, &local_work_size, 0, NULL, &event);
     clWaitForEvents(1, &event);
+
+    clReleaseMemObject(buf_inputs);
+    clReleaseMemObject(buf_weights);
+    clReleaseMemObject(buf_biases);
+    clReleaseMemObject(buf_outputs);
 }
 
 static void softmax(float* output) {
@@ -122,50 +128,55 @@ void read_kernel(const char* filename, char** dst) {
     fclose(infp);
 }
 
+void printBuildFailure(opencl_context* ctx) {
+    printf("failed to build program...\n");
+    size_t loglen;
+    char* logbuf;
+    clGetProgramBuildInfo(ctx->program, ctx->device, CL_PROGRAM_BUILD_LOG, 0, NULL, &loglen);
+    logbuf = (char*)malloc(loglen);
+    clGetProgramBuildInfo(ctx->program, ctx->device, CL_PROGRAM_BUILD_LOG, loglen, logbuf, NULL);
+    printf("%s\n", logbuf);
+}
+
 int init_opencl() {
     cl_platform_id platform;
     clGetPlatformIDs(1, &platform, NULL);
-    if (clGetDeviceIDs(platform, CL_DEVICE_TYPE_CPU, 1, &device_cpu, NULL) != 0) {
+    if (clGetDeviceIDs(platform, CL_DEVICE_TYPE_CPU, 1, &cpu.device, NULL) != 0) {
         printf("failed to initialize device...\n");
         return 1;
     }
-    if (clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device_gpu, NULL) != 0) {
+    if (clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &gpu.device, NULL) != 0) {
         printf("failed to initialize device...\n");
         return 1;
     }
-    context_cpu = clCreateContext(NULL, 1, &device_cpu, NULL, NULL, NULL);
-    context_gpu = clCreateContext(NULL, 1, &device_gpu, NULL, NULL, NULL);
+    cpu.context = clCreateContext(NULL, 1, &cpu.device, NULL, NULL, NULL);
+    gpu.context = clCreateContext(NULL, 1, &gpu.device, NULL, NULL, NULL);
 
     char* kernel_source_cpu;
-    char* kernel_source_gpu;
     read_kernel("./kernel-cpu.cl", &kernel_source_cpu);
-    read_kernel("./kernel-gpu.cl", &kernel_source_gpu);
-    program_cpu = clCreateProgramWithSource(context_cpu, 1, (const char**)&kernel_source_cpu, NULL, NULL);
-    if (clBuildProgram(program_cpu, 1, &device_cpu, "-cl-denorms-are-zero -cl-fast-relaxed-math", NULL, NULL) != CL_SUCCESS) {
-        printf("failed to build program...\n");
-        size_t loglen;
-        char* logbuf;
-        clGetProgramBuildInfo(program_cpu, device_cpu, CL_PROGRAM_BUILD_LOG, 0, NULL, &loglen);
-        logbuf = (char*)malloc(loglen);
-        clGetProgramBuildInfo(program_cpu, device_cpu, CL_PROGRAM_BUILD_LOG, loglen, logbuf, NULL);
-        printf("%s\n", logbuf);
+    cpu.program = clCreateProgramWithSource(cpu.context, 1, (const char**)&kernel_source_cpu, NULL, NULL);
+    if (clBuildProgram(cpu.program, 1, &cpu.device, "-cl-denorms-are-zero -cl-fast-relaxed-math", NULL, NULL) != CL_SUCCESS) {
+        printBuildFailure(&cpu);
         return 1;
     }
-    program_gpu = clCreateProgramWithSource(context_gpu, 1, (const char**)&kernel_source_gpu, NULL, NULL);
-    if (clBuildProgram(program_gpu, 1, &device_gpu, "-cl-denorms-are-zero -cl-fast-relaxed-math", NULL, NULL) != CL_SUCCESS) {
-        printf("failed to build program...\n");
-        size_t loglen;
-        char* logbuf;
-        clGetProgramBuildInfo(program_gpu, device_gpu, CL_PROGRAM_BUILD_LOG, 0, NULL, &loglen);
-        logbuf = (char*)malloc(loglen);
-        clGetProgramBuildInfo(program_gpu, device_gpu, CL_PROGRAM_BUILD_LOG, loglen, logbuf, NULL);
-        printf("%s\n", logbuf);
-        return 1;
-    }
+    cpu.kernel_pooling = clCreateKernel(cpu.program, "pooling_layer", NULL);
+    cpu.kernel_convolution = clCreateKernel(cpu.program, "convolution_layer", NULL);
+    cpu.kernel_fc = clCreateKernel(cpu.program, "fc_layer", NULL);
 
-    cmd_queue_cpu = clCreateCommandQueue(context_cpu, device_cpu, 0, NULL);
-    cmd_queue_gpu = clCreateCommandQueue(context_gpu, device_gpu, 0, NULL);
-    buf_gpu_outputs = clCreateBuffer(context_gpu, CL_MEM_READ_WRITE, sizeof(float) * 224 * 224 * 64, NULL, NULL);
+    char* kernel_source_gpu;
+    read_kernel("./kernel-gpu.cl", &kernel_source_gpu);
+    gpu.program = clCreateProgramWithSource(gpu.context, 1, (const char**)&kernel_source_gpu, NULL, NULL);
+    if (clBuildProgram(gpu.program, 1, &gpu.device, "-cl-denorms-are-zero -cl-fast-relaxed-math", NULL, NULL) != CL_SUCCESS) {
+        printBuildFailure(&gpu);
+        return 1;
+    }
+    gpu.kernel_pooling = clCreateKernel(gpu.program, "pooling_layer", NULL);
+    gpu.kernel_convolution = clCreateKernel(gpu.program, "convolution_layer", NULL);
+    gpu.kernel_fc = clCreateKernel(gpu.program, "fc_layer", NULL);
+
+    cpu.cmd_queue = clCreateCommandQueue(cpu.context, cpu.device, 0, NULL);
+    gpu.cmd_queue = clCreateCommandQueue(gpu.context, gpu.device, 0, NULL);
+    gpu.buf_outputs = clCreateBuffer(gpu.context, CL_MEM_READ_WRITE, sizeof(float) * 224 * 224 * 64, NULL, NULL);
     return 0;
 }
 
