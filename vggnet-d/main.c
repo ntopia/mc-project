@@ -7,7 +7,7 @@
 #include "network.h"
 #include "class_name.h"
 
-void vggnet(float * images, float * network, int * labels, float * confidences, int images_st, int images_ed);
+void vggnet(float * images, float * network, int * labels, float * confidences, int images_st, int images_ed, int num_images, int task_id);
 
 int timespec_subtract(struct timespec*, struct timespec*, struct timespec*);
 
@@ -90,34 +90,12 @@ int main(int argc, char** argv) {
 
   MPI_Barrier(MPI_COMM_WORLD);
   clock_gettime(CLOCK_MONOTONIC, &start);
-  vggnet(images, network, labels, confidences, images_st[task_id], images_st[task_id] + images_cnt[task_id]);
+  vggnet(images, network, labels, confidences, images_st[task_id], images_st[task_id] + images_cnt[task_id], num_images, task_id);
   MPI_Barrier(MPI_COMM_WORLD);
   clock_gettime(CLOCK_MONOTONIC, &end);
   timespec_subtract(&spent, &end, &start);
 
-  MPI_Status status;
-  if(task_id > 0)
-  {
-    MPI_Send(labels + images_st[task_id], images_cnt[task_id], MPI_INT, 0, 11, MPI_COMM_WORLD);
-    MPI_Send(confidences + images_st[task_id], images_cnt[task_id], MPI_FLOAT, 0, 11, MPI_COMM_WORLD);
-    MPI_Recv(labels, num_images, MPI_INT, 0, 22, MPI_COMM_WORLD, &status);
-    MPI_Recv(confidences, num_images, MPI_FLOAT, 0, 22, MPI_COMM_WORLD, &status);
-  }
-  else
-  {
-    for (i = 1; i < 4; i++)
-    {
-      MPI_Recv(labels + images_st[i], images_cnt[i], MPI_INT, i, 11, MPI_COMM_WORLD, &status);
-      MPI_Recv(confidences + images_st[i], images_cnt[i], MPI_FLOAT, i, 11, MPI_COMM_WORLD, &status);
-    }
-    for (i = 1; i < 4; i++)
-    {
-      MPI_Send(labels, num_images, MPI_INT, i, 22, MPI_COMM_WORLD);
-      MPI_Send(confidences, num_images, MPI_FLOAT, i, 22, MPI_COMM_WORLD);
-    }
-  }
-
-  if(task_id == 0)
+  if(task_id == 1)
   {
     for(i = 0; i < num_images; i++)
     {
