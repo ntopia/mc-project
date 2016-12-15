@@ -21,7 +21,6 @@ typedef struct opencl_context {
 
 opencl_context cpu[N_CPU], gpu[N_GPU];
 
-cl_mem buf_inputs_pooling;
 
 static void pooling_layer(int gpu_id, float* inputs, float* outputs, int N, int D) {
     clEnqueueWriteBuffer(gpu[gpu_id].cmd_queue, gpu[gpu_id].buf_inputs, CL_FALSE, 0, sizeof(float) * D * N * N * 4, (void*)inputs, 0, NULL, NULL);
