@@ -7,38 +7,43 @@ __kernel void pooling_layer(    __global const float* restrict inputs,
     int id = get_global_id(0);
     int p, b, i, j;
     float maxv;
+    float tmp[112];
 
     for (p = 0; p < 4; ++p) {
         b = id * 4 + p;
 
         for (i = 0; i < n; ++i) {
             for (j = 0; j < n; ++j) {
-                maxv =           inputs[n * n * b * 4 + (i * 2 + 0) * n * 2 + j * 2 + 0];
-                maxv = max(maxv, inputs[n * n * b * 4 + (i * 2 + 0) * n * 2 + j * 2 + 1]);
-                maxv = max(maxv, inputs[n * n * b * 4 + (i * 2 + 1) * n * 2 + j * 2 + 0]);
-                maxv = max(maxv, inputs[n * n * b * 4 + (i * 2 + 1) * n * 2 + j * 2 + 1]);
+                tmp[j] = max( inputs[n * n * b * 4 + (i * 2 + 0) * n * 2 + j * 2 + 0],
+                              inputs[n * n * b * 4 + (i * 2 + 0) * n * 2 + j * 2 + 1] );
+            }
+            for (j = 0; j < n; ++j) {
+                maxv = max(tmp[j], inputs[n * n * b * 4 + (i * 2 + 1) * n * 2 + j * 2 + 0]);
+                maxv = max(maxv,   inputs[n * n * b * 4 + (i * 2 + 1) * n * 2 + j * 2 + 1]);
                 outputs[n * n * b + i * n + j] = maxv;
             }
         }
     }
 }
 
-__kernel void convolution_layer(    __global const float* inputs,
-                                    __global const float* filters,
-                                    __constant const float* biases,
-                                    __global float* outputs,
+__kernel void convolution_layer(    __global const float* restrict inputs,
+                                    __global const float* restrict filters,
+                                    __constant const float* restrict biases,
+                                    __global float* restrict outputs,
                                     int n, int d1, int d2) {
     int id = get_global_id(0);
     int b, p, q, i, j, k, l, x, y;
-    float sum;
+    float sum, bias;
     float filter[3];
+    float tmp[224 * 224];
 
     for (p = 0; p < 4; ++p) {
         b = id * 4 + p;
 
+        bias = biases[b];
         for (i = 0; i < n; ++i) {
             for (j = 0; j < n; ++j) {
-                outputs[n * n * b + i * n + j] = 0;
+                tmp[i * n + j] = bias;
             }
         }
 
@@ -53,18 +58,17 @@ __kernel void convolution_layer(    __global const float* inputs,
                     if (x < 0 || x >= n) continue;
 
                     for (j = 0; j < n; ++j) {
-                        sum = 0;
-                        sum += (j - 1 >= 0) ? inputs[n * n * q + x * n + j + 0 - 1] * filter[0] : 0;
+                        sum  = (j - 1 >= 0) ? inputs[n * n * q + x * n + j + 0 - 1] * filter[0] : 0;
                         sum +=                inputs[n * n * q + x * n + j + 1 - 1] * filter[1];
                         sum += (j + 1 < n)  ? inputs[n * n * q + x * n + j + 2 - 1] * filter[2] : 0;
-                        outputs[n * n * b + i * n + j] += sum;
+                        tmp[i * n + j] += sum;
                     }
                 }
             }
         }
 
         for (k = 0; k < n * n; ++k) {
-            outputs[n * n * b + k] = ReLU(outputs[n * n * b + k] + biases[b]);
+            outputs[n * n * b + k] = ReLU(tmp[k]);
         }
     }
 }

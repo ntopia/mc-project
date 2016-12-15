@@ -9,8 +9,8 @@ __kernel void pooling_layer(    __global const float* restrict inputs,
     int j = get_global_id(1) % n;
     float maxv;
 
-    maxv =           inputs[pid * n * n * 4 + (i * 2 + 0) * n * 2 + j * 2 + 0];
-    maxv = max(maxv, inputs[pid * n * n * 4 + (i * 2 + 0) * n * 2 + j * 2 + 1]);
+    maxv = max( inputs[pid * n * n * 4 + (i * 2 + 0) * n * 2 + j * 2 + 0],
+                inputs[pid * n * n * 4 + (i * 2 + 0) * n * 2 + j * 2 + 1] );
     barrier(CLK_GLOBAL_MEM_FENCE);
     maxv = max(maxv, inputs[pid * n * n * 4 + (i * 2 + 1) * n * 2 + j * 2 + 0]);
     maxv = max(maxv, inputs[pid * n * n * 4 + (i * 2 + 1) * n * 2 + j * 2 + 1]);
