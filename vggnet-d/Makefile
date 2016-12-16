@@ -1,9 +1,9 @@
 
 CC=mpicc
-CFLAGS=-Wall -g -O2 -std=gnu99 -march=native -msse -mfpmath=sse -funroll-loops -ftree-vectorize
+CFLAGS=-Wall -g -O3 -std=gnu99 -march=native -msse -mfpmath=sse -funroll-loops -ftree-vectorize
 
-LIBS = -lm -lrt -lOpenCL -lpthread
-LDFLAGS = ${LIBS}
+LIBS=-lm -lrt -lOpenCL -lpthread
+LDFLAGS=${LIBS}
 
 all: vggnet
 
