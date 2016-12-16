@@ -1,5 +1,5 @@
 
-CC=gc
+CC=gcc
 CFLAGS=-Wall -g -O3 -std=gnu99 -march=native -msse -mfpmath=sse -funroll-loops -ftree-vectorize
 
 LIBS=-lm -lrt -lOpenCL
