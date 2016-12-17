@@ -12,7 +12,6 @@ typedef struct opencl_context {
     cl_program program;
     cl_command_queue cmd_queue;
     cl_mem buf_outputs;
-    cl_kernel kernel_pooling, kernel_convolution, kernel_fc;
 } opencl_context;
 
 opencl_context cpu;
@@ -22,20 +21,22 @@ static void pooling_layer(float* inputs, float* outputs, int N, int D) {
     cl_mem buf_input = clCreateBuffer(cpu.context, CL_MEM_USE_HOST_PTR, sizeof(float) * D * N * N * 4, (void*)inputs, NULL);
     cl_mem buf_output = clCreateBuffer(cpu.context, CL_MEM_USE_HOST_PTR, sizeof(float) * D * N * N, (void*)outputs, NULL);
 
-    clSetKernelArg(cpu.kernel_pooling, 0, sizeof(cl_mem), (void*)&buf_input);
-    clSetKernelArg(cpu.kernel_pooling, 1, sizeof(cl_mem), (void*)&buf_output);
-    clSetKernelArg(cpu.kernel_pooling, 2, sizeof(int), (void*)&N);
-    clSetKernelArg(cpu.kernel_pooling, 3, sizeof(int), (void*)&D);
+    cl_kernel kernel = clCreateKernel(cpu.program, "pooling_layer", NULL);
+    clSetKernelArg(kernel, 0, sizeof(cl_mem), (void*)&buf_input);
+    clSetKernelArg(kernel, 1, sizeof(cl_mem), (void*)&buf_output);
+    clSetKernelArg(kernel, 2, sizeof(int), (void*)&N);
+    clSetKernelArg(kernel, 3, sizeof(int), (void*)&D);
 
     size_t global_work_size = D / 4;
     size_t global_work_offset = 0;
     size_t local_work_size = D / 4 / 16;
     cl_event event;
-    clEnqueueNDRangeKernel(cpu.cmd_queue, cpu.kernel_pooling, 1, &global_work_offset, &global_work_size, &local_work_size, 0, NULL, &event);
+    clEnqueueNDRangeKernel(cpu.cmd_queue, kernel, 1, &global_work_offset, &global_work_size, &local_work_size, 0, NULL, &event);
     clWaitForEvents(1, &event);
 
     clReleaseMemObject(buf_input);
     clReleaseMemObject(buf_output);
+    clReleaseKernel(kernel);
 }
 
 static void convolution_layer(float* inputs, float* outputs, float* filters, float* biases, int N, int D1, int D2) {
@@ -44,25 +45,27 @@ static void convolution_layer(float* inputs, float* outputs, float* filters, flo
     cl_mem buf_biases = clCreateBuffer(cpu.context, CL_MEM_USE_HOST_PTR, sizeof(float) * D2, (void*)biases, NULL);
     cl_mem buf_outputs = clCreateBuffer(cpu.context, CL_MEM_USE_HOST_PTR, sizeof(float) * N * N * D2, (void*)outputs, NULL);
 
-    clSetKernelArg(cpu.kernel_convolution, 0, sizeof(cl_mem), (void*)&buf_inputs);
-    clSetKernelArg(cpu.kernel_convolution, 1, sizeof(cl_mem), (void*)&buf_filters);
-    clSetKernelArg(cpu.kernel_convolution, 2, sizeof(cl_mem), (void*)&buf_biases);
-    clSetKernelArg(cpu.kernel_convolution, 3, sizeof(cl_mem), (void*)&buf_outputs);
-    clSetKernelArg(cpu.kernel_convolution, 4, sizeof(int), (void*)&N);
-    clSetKernelArg(cpu.kernel_convolution, 5, sizeof(int), (void*)&D1);
-    clSetKernelArg(cpu.kernel_convolution, 6, sizeof(int), (void*)&D2);
+    cl_kernel kernel = clCreateKernel(cpu.program, "convolution_layer", NULL);
+    clSetKernelArg(kernel, 0, sizeof(cl_mem), (void*)&buf_inputs);
+    clSetKernelArg(kernel, 1, sizeof(cl_mem), (void*)&buf_filters);
+    clSetKernelArg(kernel, 2, sizeof(cl_mem), (void*)&buf_biases);
+    clSetKernelArg(kernel, 3, sizeof(cl_mem), (void*)&buf_outputs);
+    clSetKernelArg(kernel, 4, sizeof(int), (void*)&N);
+    clSetKernelArg(kernel, 5, sizeof(int), (void*)&D1);
+    clSetKernelArg(kernel, 6, sizeof(int), (void*)&D2);
 
     size_t global_work_size = D2 / 4;
     size_t global_work_offset = 0;
     size_t local_work_size = D2 / 4 / 16;
     cl_event event;
-    clEnqueueNDRangeKernel(cpu.cmd_queue, cpu.kernel_convolution, 1, &global_work_offset, &global_work_size, &local_work_size, 0, NULL, &event);
+    clEnqueueNDRangeKernel(cpu.cmd_queue, kernel, 1, &global_work_offset, &global_work_size, &local_work_size, 0, NULL, &event);
     clWaitForEvents(1, &event);
 
     clReleaseMemObject(buf_inputs);
     clReleaseMemObject(buf_filters);
     clReleaseMemObject(buf_biases);
     clReleaseMemObject(buf_outputs);
+    clReleaseKernel(kernel);
 }
 
 static void fc_layer(float* input_neuron, float* output_neuron, float* weights, float* biases, int N, int M) {
@@ -71,24 +74,26 @@ static void fc_layer(float* input_neuron, float* output_neuron, float* weights, 
     cl_mem buf_biases = clCreateBuffer(cpu.context, CL_MEM_USE_HOST_PTR, sizeof(float) * M, (void*)biases, NULL);
     cl_mem buf_outputs = clCreateBuffer(cpu.context, CL_MEM_USE_HOST_PTR, sizeof(float) * M, (void*)output_neuron, NULL);
 
-    clSetKernelArg(cpu.kernel_fc, 0, sizeof(cl_mem), (void*)&buf_inputs);
-    clSetKernelArg(cpu.kernel_fc, 1, sizeof(cl_mem), (void*)&buf_weights);
-    clSetKernelArg(cpu.kernel_fc, 2, sizeof(cl_mem), (void*)&buf_biases);
-    clSetKernelArg(cpu.kernel_fc, 3, sizeof(cl_mem), (void*)&buf_outputs);
-    clSetKernelArg(cpu.kernel_fc, 4, sizeof(int), (void*)&N);
-    clSetKernelArg(cpu.kernel_fc, 5, sizeof(int), (void*)&M);
+    cl_kernel kernel = clCreateKernel(cpu.program, "fc_layer", NULL);
+    clSetKernelArg(kernel, 0, sizeof(cl_mem), (void*)&buf_inputs);
+    clSetKernelArg(kernel, 1, sizeof(cl_mem), (void*)&buf_weights);
+    clSetKernelArg(kernel, 2, sizeof(cl_mem), (void*)&buf_biases);
+    clSetKernelArg(kernel, 3, sizeof(cl_mem), (void*)&buf_outputs);
+    clSetKernelArg(kernel, 4, sizeof(int), (void*)&N);
+    clSetKernelArg(kernel, 5, sizeof(int), (void*)&M);
 
     size_t global_work_size = M;
     size_t global_work_offset = 0;
     size_t local_work_size = M / 8;
     cl_event event;
-    clEnqueueNDRangeKernel(cpu.cmd_queue, cpu.kernel_fc, 1, &global_work_offset, &global_work_size, &local_work_size, 0, NULL, &event);
+    clEnqueueNDRangeKernel(cpu.cmd_queue, kernel, 1, &global_work_offset, &global_work_size, &local_work_size, 0, NULL, &event);
     clWaitForEvents(1, &event);
 
     clReleaseMemObject(buf_inputs);
     clReleaseMemObject(buf_weights);
     clReleaseMemObject(buf_biases);
     clReleaseMemObject(buf_outputs);
+    clReleaseKernel(kernel);
 }
 
 static void softmax(float* output) {
@@ -161,9 +166,6 @@ int init_opencl() {
         print_build_failure(&cpu);
         return 1;
     }
-    cpu.kernel_pooling = clCreateKernel(cpu.program, "pooling_layer", NULL);
-    cpu.kernel_convolution = clCreateKernel(cpu.program, "convolution_layer", NULL);
-    cpu.kernel_fc = clCreateKernel(cpu.program, "fc_layer", NULL);
 
     cpu.cmd_queue = clCreateCommandQueue(cpu.context, cpu.device, 0, NULL);
     return 0;
