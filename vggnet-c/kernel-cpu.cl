@@ -81,7 +81,7 @@ __kernel void fc_layer( __constant const float4* input_neuron,
 
     int id = get_global_id(0);
     float sum = 0;
-    int i, j;
+    int i;
 
     sum = biases[id];
     n /= 4;

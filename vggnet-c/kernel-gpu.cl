@@ -24,12 +24,16 @@ __kernel void convolution_layer(    __global const float* restrict inputs,
                                     int n, int d1, int d2) {
     int opic = get_global_id(0);
     int i = get_group_id(1);
-    int j = get_global_id(1) % n;
+    int j = get_local_id(1);
     int p, k, x;
     float sum = 0, v;
     __local float input[256];
-    input[0] = 0;
-    input[n + 1] = 0;
+    __local float bias;
+
+    if (j == 0) {
+        bias = biases[opic];
+        input[0] = input[n + 1] = 0;
+    }
 
     for (p = 0; p < d1; ++p) {
         for (k = 0; k < 3; ++k) {
@@ -48,7 +52,7 @@ __kernel void convolution_layer(    __global const float* restrict inputs,
             sum += input[j + 2] * filters[3 * 3 * (opic * d1 + p) + k * 3 + 2];
         }
     }
-    outputs[n * n * opic + i * n + j] = ReLU(sum + biases[opic]);
+    outputs[n * n * opic + i * n + j] = ReLU(sum + bias);
 }
 
 __kernel void fc_layer( __constant const float4* input_neuron,
@@ -59,7 +63,7 @@ __kernel void fc_layer( __constant const float4* input_neuron,
 
     int id = get_global_id(0);
     float sum = 0;
-    int i, j;
+    int i;
 
     sum = biases[id];
     n /= 4;
