@@ -274,7 +274,7 @@ void* vggnet_thread(void* arg) {
     return NULL;
 }
 
-void vggnet(float* images, float* network, int* labels, float* confidences, int images_st, int images_ed, int num_all_images, int task_id) {
+void vggnet(float* images, float* network, int* labels, float* confidences, int num_all_images) {
     if (init_opencl() != 0) {
         return;
     }
@@ -320,9 +320,20 @@ void vggnet(float* images, float* network, int* labels, float* confidences, int 
     w3 = get_param(&network, 4096 * 1000);
     b3 = get_param(&network, 1000);
 
+    int task_id;
+    MPI_Comm_rank(MPI_COMM_WORLD, &task_id);
+    int images_st[4], images_cnt[4], cntsum = 0, cntOneTask = (num_all_images + 3) / 4;
+    for (int i = 0; i < 4; ++i) {
+        images_cnt[i] = cntOneTask;
+        if (cntsum + images_cnt[i] > num_all_images) {
+            images_cnt[i] = num_all_images - cntsum;
+        }
+        cntsum += images_cnt[i];
+        images_st[i] = (i == 0) ? 0 : images_st[i - 1] + images_cnt[i - 1];
+    }
 
-    int num_images = images_ed - images_st;
-    int elapsed = images_st;
+    int num_images = images_cnt[task_id];
+    int elapsed = images_st[task_id];
     pthread_t threads[3];
     vggnet_thread_args arg[4];
     for (int k = 0; k < 4; ++k) {
@@ -342,33 +353,15 @@ void vggnet(float* images, float* network, int* labels, float* confidences, int 
         pthread_join(threads[k], NULL);
     }
 
-    int st[4], cnt[4];
-    for (int k = 0; k < 4; ++k) {
-        cnt[k] = (num_all_images / 4) + (k < (num_all_images % 4) ? 1 : 0);
-        st[k] = (k == 0) ? 0 : st[k - 1] + cnt[k - 1];
-    }
+    int* tmp_labels = (int*)malloc(sizeof(int) * 1024);
+    float* tmp_confidences = (float*)malloc(sizeof(float) * 1024);
+    MPI_Allgather(labels + images_st[task_id], cntOneTask, MPI_INT, tmp_labels, cntOneTask, MPI_INT, MPI_COMM_WORLD);
+    MPI_Allgather(confidences + images_st[task_id], cntOneTask, MPI_FLOAT, tmp_confidences, cntOneTask, MPI_FLOAT, MPI_COMM_WORLD);
 
-    MPI_Request req[6];
-    if (task_id == 0) {
-        for (int k = 1; k < 4; ++k) {
-            MPI_Irecv(labels + st[k], cnt[k], MPI_INT, k, 11, MPI_COMM_WORLD, &req[(k - 1) * 2]);
-            MPI_Irecv(confidences + st[k], cnt[k], MPI_FLOAT, k, 11, MPI_COMM_WORLD, &req[(k - 1) * 2 + 1]);
+    for (int i = 0; i < 1000; ++i) {
+        if (i < images_st[task_id] || i >= images_st[task_id] + images_cnt[task_id]) {
+            labels[i] = tmp_labels[i];
+            confidences[i] = tmp_confidences[i];
         }
-        MPI_Waitall(6, req, MPI_STATUSES_IGNORE);
-
-        for (int k = 1; k < 4; ++k) {
-            MPI_Isend(labels, num_all_images, MPI_INT, k, 22, MPI_COMM_WORLD, &req[(k - 1) * 2]);
-            MPI_Isend(confidences, num_all_images, MPI_FLOAT, k, 22, MPI_COMM_WORLD, &req[(k - 1) * 2 + 1]);
-        }
-        MPI_Waitall(6, req, MPI_STATUSES_IGNORE);
-    }
-    else {
-        MPI_Isend(labels + images_st, num_images, MPI_INT, 0, 11, MPI_COMM_WORLD, &req[0]);
-        MPI_Isend(confidences + images_st, num_images, MPI_FLOAT, 0, 11, MPI_COMM_WORLD, &req[1]);
-        MPI_Waitall(2, req, MPI_STATUSES_IGNORE);
-
-        MPI_Irecv(labels, num_all_images, MPI_INT, 0, 22, MPI_COMM_WORLD, &req[0]);
-        MPI_Irecv(confidences, num_all_images, MPI_FLOAT, 0, 22, MPI_COMM_WORLD, &req[1]);
-        MPI_Waitall(2, req, MPI_STATUSES_IGNORE);
     }
 }

@@ -7,14 +7,12 @@
 #include "network.h"
 #include "class_name.h"
 
-void vggnet(float * images, float * network, int * labels, float * confidences, int images_st, int images_ed, int num_images, int task_id);
+void vggnet(float * images, float * network, int * labels, float * confidences, int num_images);
 
 int timespec_subtract(struct timespec*, struct timespec*, struct timespec*);
 
 int main(int argc, char** argv) {
   MPI_Init(&argc, &argv);
-  int task_id;
-  MPI_Comm_rank(MPI_COMM_WORLD, &task_id);
 
   float *images, *network, *confidences;
   int *labels;
@@ -81,21 +79,16 @@ int main(int argc, char** argv) {
     fclose(io_file);
   }
 
-  int images_st[4], images_cnt[4];
-  for(i = 0; i < 4; i++)
-  {
-    images_cnt[i] = (num_images / 4) + (i < (num_images % 4) ? 1 : 0);
-    images_st[i] = (i == 0) ? 0 : images_st[i - 1] + images_cnt[i - 1];
-  }
-
   MPI_Barrier(MPI_COMM_WORLD);
   clock_gettime(CLOCK_MONOTONIC, &start);
-  vggnet(images, network, labels, confidences, images_st[task_id], images_st[task_id] + images_cnt[task_id], num_images, task_id);
+  vggnet(images, network, labels, confidences, num_images);
   MPI_Barrier(MPI_COMM_WORLD);
   clock_gettime(CLOCK_MONOTONIC, &end);
   timespec_subtract(&spent, &end, &start);
 
-  if(task_id == 1)
+  int task_id;
+  MPI_Comm_rank(MPI_COMM_WORLD, &task_id);
+  if(task_id == 2)
   {
     for(i = 0; i < num_images; i++)
     {
