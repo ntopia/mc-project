@@ -104,21 +104,3 @@ __kernel void convolution_2row_layer(    __global const float* restrict inputs,
     }
     outputs[n * n * opic + i * n + j] = ReLU(sum + bias);
 }
-
-__kernel void fc_layer( __constant const float4* input_neuron,
-                        __global const float4* weights,
-                        __constant const float* biases,
-                        __global float* output_neuron,
-                        int n, int m) {
-
-    int id = get_global_id(0);
-    float sum = 0;
-    int i;
-
-    sum = biases[id];
-    n /= 4;
-    for (i = 0; i < n; ++i) {
-        sum += dot(input_neuron[i], weights[id * n + i]);
-    }
-    output_neuron[id] = ReLU(sum);
-}

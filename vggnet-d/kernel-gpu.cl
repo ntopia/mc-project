@@ -21,7 +21,7 @@ __kernel void convolution_layer(    __global const float* restrict inputs,
                                     __global const float* restrict filters,
                                     __constant const float* restrict biases,
                                     __global float* restrict outputs,
-                                    int n, int d1, int d2) {
+                                    int n, int d1) {
     int opic = get_global_id(0);
     int i = get_group_id(1);
     int j = get_local_id(1);
@@ -55,20 +55,52 @@ __kernel void convolution_layer(    __global const float* restrict inputs,
     outputs[n * n * opic + i * n + j] = ReLU(sum + bias);
 }
 
-__kernel void fc_layer( __constant const float4* input_neuron,
-                        __global const float4* weights,
-                        __constant const float* biases,
-                        __global float* output_neuron,
-                        int n, int m) {
+__kernel void convolution_2row_layer(    __global const float* restrict inputs,
+                                    __global const float* restrict filters,
+                                    __constant const float* restrict biases,
+                                    __global float* restrict outputs,
+                                    int n, int d1) {
+    int opic = get_global_id(0);
+    int di = get_local_id(1) / n;
+    int i = get_group_id(1) * 2 + di;
+    int j = get_local_id(1) % n;
+    int p, k;
+    float sum = 0, v;
+    __local float input[4][64];
+    __local float bias;
 
-    int id = get_global_id(0);
-    float sum = 0;
-    int i;
-
-    sum = biases[id];
-    n /= 4;
-    for (i = 0; i < n; ++i) {
-        sum += dot(input_neuron[i], weights[id * n + i]);
+    if (get_local_id(1) == 0) {
+        bias = biases[opic];
+        input[0][0] = input[0][n + 1] = 0;
+        input[1][0] = input[1][n + 1] = 0;
+        input[2][0] = input[2][n + 1] = 0;
+        input[3][0] = input[3][n + 1] = 0;
     }
-    output_neuron[id] = ReLU(sum);
+
+    for (p = 0; p < d1; ++p) {
+        if (i > 0) {
+            input[    di][j + 1] = inputs[n * n * p + (i - 1) * n + j];
+        }
+        else {
+            input[    di][j + 1] = 0;
+        }
+        if (i + 1 < n) {
+            input[2 + di][j + 1] = inputs[n * n * p + (i + 1) * n + j];
+        }
+        else {
+            input[2 + di][j + 1] = 0;
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+
+        sum += input[di    ][j    ] * filters[3 * 3 * (opic * d1 + p) + 0 * 3 + 0];
+        sum += input[di    ][j + 1] * filters[3 * 3 * (opic * d1 + p) + 0 * 3 + 1];
+        sum += input[di    ][j + 2] * filters[3 * 3 * (opic * d1 + p) + 0 * 3 + 2];
+        sum += input[di + 1][j    ] * filters[3 * 3 * (opic * d1 + p) + 1 * 3 + 0];
+        sum += input[di + 1][j + 1] * filters[3 * 3 * (opic * d1 + p) + 1 * 3 + 1];
+        sum += input[di + 1][j + 2] * filters[3 * 3 * (opic * d1 + p) + 1 * 3 + 2];
+        sum += input[di + 2][j    ] * filters[3 * 3 * (opic * d1 + p) + 2 * 3 + 0];
+        sum += input[di + 2][j + 1] * filters[3 * 3 * (opic * d1 + p) + 2 * 3 + 1];
+        sum += input[di + 2][j + 2] * filters[3 * 3 * (opic * d1 + p) + 2 * 3 + 2];
+    }
+    outputs[n * n * opic + i * n + j] = ReLU(sum + bias);
 }
