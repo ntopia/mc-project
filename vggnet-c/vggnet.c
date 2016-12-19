@@ -86,26 +86,26 @@ static void convolution_2row_layer(int gpu_id, float* filters, float* biases, in
 }
 
 static void convolution_break_layer(float* filters, float* biases, int N, int D1, int D2) {
-    cl_mem buf_filters = clCreateBuffer(gpu.context, CL_MEM_USE_HOST_PTR, sizeof(float) * 3 * 3 * D1 * D2, (void*)filters, NULL);
-    cl_mem buf_biases = clCreateBuffer(gpu.context, CL_MEM_USE_HOST_PTR, sizeof(float) * D2, (void*)biases, NULL);
+    cl_mem buf_filters = clCreateBuffer(gpu[gpu_id].context, CL_MEM_USE_HOST_PTR, sizeof(float) * 3 * 3 * D1 * D2, (void*)filters, NULL);
+    cl_mem buf_biases = clCreateBuffer(gpu[gpu_id].context, CL_MEM_USE_HOST_PTR, sizeof(float) * D2, (void*)biases, NULL);
 
-    cl_kernel kernel = clCreateKernel(gpu.program, "convolution_break_layer", NULL);
-    clSetKernelArg(kernel, 0, sizeof(cl_mem), (void*)&(gpu.buf[0]));
+    cl_kernel kernel = clCreateKernel(gpu[gpu_id].program, "convolution_break_layer", NULL);
+    clSetKernelArg(kernel, 0, sizeof(cl_mem), (void*)&(gpu[gpu_id].buf[0]));
     clSetKernelArg(kernel, 1, sizeof(cl_mem), (void*)&buf_filters);
     clSetKernelArg(kernel, 2, sizeof(cl_mem), (void*)&buf_biases);
-    clSetKernelArg(kernel, 3, sizeof(cl_mem), (void*)&(gpu.buf[1]));
+    clSetKernelArg(kernel, 3, sizeof(cl_mem), (void*)&(gpu[gpu_id].buf[1]));
     clSetKernelArg(kernel, 4, sizeof(int), (void*)&N);
     clSetKernelArg(kernel, 5, sizeof(int), (void*)&D1);
 
     size_t global_work_size[] = { D2 * N * N };
     size_t global_work_offset[] = { 0 };
     size_t local_work_size[] = { 256 };
-    clEnqueueNDRangeKernel(gpu.cmd_queue, kernel, 1, global_work_offset, global_work_size, local_work_size, 0, NULL, NULL);
+    clEnqueueNDRangeKernel(gpu[gpu_id].cmd_queue, kernel, 1, global_work_offset, global_work_size, local_work_size, 0, NULL, NULL);
 
     clReleaseMemObject(buf_filters);
     clReleaseMemObject(buf_biases);
     clReleaseKernel(kernel);
-    swap_cl_mem(&gpu);
+    swap_cl_mem(&gpu[gpu_id]);
 }
 
 static void fc_layer(float* input_neuron, float* output_neuron, float* weights, float* biases, int N, int M) {
