@@ -86,6 +86,29 @@ static void convolution_2row_layer(int gpu_id, float* filters, float* biases, in
     swap_cl_mem(&gpu[gpu_id]);
 }
 
+static void convolution_break_layer(float* filters, float* biases, int N, int D1, int D2) {
+    cl_mem buf_filters = clCreateBuffer(gpu.context, CL_MEM_USE_HOST_PTR, sizeof(float) * 3 * 3 * D1 * D2, (void*)filters, NULL);
+    cl_mem buf_biases = clCreateBuffer(gpu.context, CL_MEM_USE_HOST_PTR, sizeof(float) * D2, (void*)biases, NULL);
+
+    cl_kernel kernel = clCreateKernel(gpu.program, "convolution_break_layer", NULL);
+    clSetKernelArg(kernel, 0, sizeof(cl_mem), (void*)&(gpu.buf[0]));
+    clSetKernelArg(kernel, 1, sizeof(cl_mem), (void*)&buf_filters);
+    clSetKernelArg(kernel, 2, sizeof(cl_mem), (void*)&buf_biases);
+    clSetKernelArg(kernel, 3, sizeof(cl_mem), (void*)&(gpu.buf[1]));
+    clSetKernelArg(kernel, 4, sizeof(int), (void*)&N);
+    clSetKernelArg(kernel, 5, sizeof(int), (void*)&D1);
+
+    size_t global_work_size[] = { D2 * N * N };
+    size_t global_work_offset[] = { 0 };
+    size_t local_work_size[] = { 256 };
+    clEnqueueNDRangeKernel(gpu.cmd_queue, kernel, 1, global_work_offset, global_work_size, local_work_size, 0, NULL, NULL);
+
+    clReleaseMemObject(buf_filters);
+    clReleaseMemObject(buf_biases);
+    clReleaseKernel(kernel);
+    swap_cl_mem(&gpu);
+}
+
 static void fc_layer(float* input_neuron, float* output_neuron, float* weights, float* biases, int N, int M) {
     for (int i = 0; i < M; i += 2) {
         float sum0 = 0, sum1 = 0;
@@ -257,9 +280,9 @@ void* vggnet_thread(void* arg) {
         convolution_layer(thread_id, f2_2, b2_2, 112, 128, 128);
         pooling_layer(thread_id, 56, 128);
 
-        convolution_layer(thread_id, f3_1, b3_1, 56, 128, 256);
-        convolution_layer(thread_id, f3_2, b3_2, 56, 256, 256);
-        convolution_layer(thread_id, f3_3, b3_3, 56, 256, 256);
+        convolution_2row_layer(thread_id, f3_1, b3_1, 56, 128, 256);
+        convolution_2row_layer(thread_id, f3_2, b3_2, 56, 256, 256);
+        convolution_2row_layer(thread_id, f3_3, b3_3, 56, 256, 256);
         pooling_layer(thread_id, 28, 256);
 
         convolution_2row_layer(thread_id, f4_1, b4_1, 28, 256, 512);
@@ -267,9 +290,9 @@ void* vggnet_thread(void* arg) {
         convolution_2row_layer(thread_id, f4_3, b4_3, 28, 512, 512);
         pooling_layer(thread_id, 14, 512);
 
-        convolution_2row_layer(thread_id, f5_1, b5_1, 14, 512, 512);
-        convolution_2row_layer(thread_id, f5_2, b5_2, 14, 512, 512);
-        convolution_2row_layer(thread_id, f5_3, b5_3, 14, 512, 512);
+        convolution_break_layer(thread_id, f5_1, b5_1, 14, 512, 512);
+        convolution_break_layer(thread_id, f5_2, b5_2, 14, 512, 512);
+        convolution_break_layer(thread_id, f5_3, b5_3, 14, 512, 512);
         pooling_layer(thread_id, 7, 512);
 
         float* stage;

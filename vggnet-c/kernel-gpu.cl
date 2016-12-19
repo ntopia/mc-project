@@ -101,6 +101,32 @@ __kernel void convolution_2row_layer(    __global const float* restrict inputs,
         sum += input[di + 2][j    ] * filters[3 * 3 * (opic * d1 + p) + 2 * 3 + 0];
         sum += input[di + 2][j + 1] * filters[3 * 3 * (opic * d1 + p) + 2 * 3 + 1];
         sum += input[di + 2][j + 2] * filters[3 * 3 * (opic * d1 + p) + 2 * 3 + 2];
+        barrier(CLK_LOCAL_MEM_FENCE);
     }
     outputs[n * n * opic + i * n + j] = ReLU(sum + bias);
+}
+
+__kernel void convolution_break_layer(    __global const float* restrict inputs,
+                                    __global const float* restrict filters,
+                                    __constant const float* restrict biases,
+                                    __global float* restrict outputs,
+                                    int n, int d1) {
+    int gid = get_global_id(0);
+    int opic = gid / (n * n);
+    int i = (gid % (n * n)) / n;
+    int j = gid % n;
+    int p, k, x;
+    float sum = 0;
+
+    for (p = 0; p < d1; ++p) {
+        for (k = 0; k < 3; ++k) {
+            x = i + k - 1;
+            if (0 <= x && x < n) {
+                sum += ((j - 1 >= 0) ? inputs[n * n * p + x * n + j - 1] : 0) * filters[3 * 3 * (opic * d1 + p) + k * 3 + 0];
+                sum +=                 inputs[n * n * p + x * n + j]          * filters[3 * 3 * (opic * d1 + p) + k * 3 + 1];
+                sum += ((j + 1 < n)  ? inputs[n * n * p + x * n + j + 1] : 0) * filters[3 * 3 * (opic * d1 + p) + k * 3 + 2];
+            }
+        }
+    }
+    outputs[n * n * opic + i * n + j] = ReLU(sum + biases[opic]);
 }
