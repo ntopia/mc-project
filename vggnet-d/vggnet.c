@@ -86,7 +86,7 @@ static void convolution_2row_layer(int gpu_id, float* filters, float* biases, in
     swap_cl_mem(&gpu[gpu_id]);
 }
 
-static void convolution_break_layer(float* filters, float* biases, int N, int D1, int D2) {
+static void convolution_break_layer(int gpu_id, float* filters, float* biases, int N, int D1, int D2) {
     cl_mem buf_filters = clCreateBuffer(gpu[gpu_id].context, CL_MEM_USE_HOST_PTR, sizeof(float) * 3 * 3 * D1 * D2, (void*)filters, NULL);
     cl_mem buf_biases = clCreateBuffer(gpu[gpu_id].context, CL_MEM_USE_HOST_PTR, sizeof(float) * D2, (void*)biases, NULL);
 
