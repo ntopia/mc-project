@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <pthread.h>
 #include <CL/cl.h>
 
 #define ReLU(x) (((x) > 0) ? (x) : 0)
@@ -20,7 +21,7 @@ inline void swap_cl_mem(opencl_context* ctx) {
     ctx->buf[1] = tmp;
 }
 
-opencl_context cpu, gpu;
+opencl_context gpu;
 
 static void pooling_layer(int N, int D) {
     cl_kernel kernel = clCreateKernel(gpu.program, "pooling_layer", NULL);
@@ -85,31 +86,17 @@ static void convolution_2row_layer(float* filters, float* biases, int N, int D1,
 }
 
 static void fc_layer(float* input_neuron, float* output_neuron, float* weights, float* biases, int N, int M) {
-    cl_mem buf_inputs = clCreateBuffer(cpu.context, CL_MEM_USE_HOST_PTR, sizeof(float) * N, (void*)input_neuron, NULL);
-    cl_mem buf_weights = clCreateBuffer(cpu.context, CL_MEM_USE_HOST_PTR, sizeof(float) * N * M, (void*)weights, NULL);
-    cl_mem buf_biases = clCreateBuffer(cpu.context, CL_MEM_USE_HOST_PTR, sizeof(float) * M, (void*)biases, NULL);
-    cl_mem buf_outputs = clCreateBuffer(cpu.context, CL_MEM_USE_HOST_PTR, sizeof(float) * M, (void*)output_neuron, NULL);
-
-    cl_kernel kernel = clCreateKernel(cpu.program, "fc_layer", NULL);
-    clSetKernelArg(kernel, 0, sizeof(cl_mem), (void*)&buf_inputs);
-    clSetKernelArg(kernel, 1, sizeof(cl_mem), (void*)&buf_weights);
-    clSetKernelArg(kernel, 2, sizeof(cl_mem), (void*)&buf_biases);
-    clSetKernelArg(kernel, 3, sizeof(cl_mem), (void*)&buf_outputs);
-    clSetKernelArg(kernel, 4, sizeof(int), (void*)&N);
-    clSetKernelArg(kernel, 5, sizeof(int), (void*)&M);
-
-    size_t global_work_size = M;
-    size_t global_work_offset = 0;
-    size_t local_work_size = M / 8;
-    cl_event event;
-    clEnqueueNDRangeKernel(cpu.cmd_queue, kernel, 1, &global_work_offset, &global_work_size, &local_work_size, 0, NULL, &event);
-    clWaitForEvents(1, &event);
-
-    clReleaseMemObject(buf_inputs);
-    clReleaseMemObject(buf_weights);
-    clReleaseMemObject(buf_biases);
-    clReleaseMemObject(buf_outputs);
-    clReleaseKernel(kernel);
+    for (int i = 0; i < M; i += 2) {
+        float sum0 = 0, sum1 = 0;
+        for (int j = 0; j < N; ++j) {
+            sum0 += input_neuron[j] * weights[i * N + j];
+            sum1 += input_neuron[j] * weights[(i + 1) * N + j];
+        }
+        sum0 += biases[i];
+        sum1 += biases[i + 1];
+        output_neuron[i] = ReLU(sum0);
+        output_neuron[i + 1] = ReLU(sum1);
+    }
 }
 
 static void softmax(float* output) {
@@ -169,24 +156,11 @@ void printBuildFailure(opencl_context* ctx) {
 int init_opencl() {
     cl_platform_id platform;
     clGetPlatformIDs(1, &platform, NULL);
-    if (clGetDeviceIDs(platform, CL_DEVICE_TYPE_CPU, 1, &cpu.device, NULL) != 0) {
-        printf("failed to initialize device...\n");
-        return 1;
-    }
     if (clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &gpu.device, NULL) != 0) {
         printf("failed to initialize device...\n");
         return 1;
     }
-    cpu.context = clCreateContext(NULL, 1, &cpu.device, NULL, NULL, NULL);
     gpu.context = clCreateContext(NULL, 1, &gpu.device, NULL, NULL, NULL);
-
-    char* kernel_source_cpu;
-    read_kernel("./kernel-cpu.cl", &kernel_source_cpu);
-    cpu.program = clCreateProgramWithSource(cpu.context, 1, (const char**)&kernel_source_cpu, NULL, NULL);
-    if (clBuildProgram(cpu.program, 1, &cpu.device, "-cl-denorms-are-zero -cl-fast-relaxed-math", NULL, NULL) != CL_SUCCESS) {
-        printBuildFailure(&cpu);
-        return 1;
-    }
 
     char* kernel_source_gpu;
     read_kernel("./kernel-gpu.cl", &kernel_source_gpu);
@@ -196,34 +170,63 @@ int init_opencl() {
         return 1;
     }
 
-    cpu.cmd_queue = clCreateCommandQueue(cpu.context, cpu.device, 0, NULL);
     gpu.cmd_queue = clCreateCommandQueue(gpu.context, gpu.device, 0, NULL);
     gpu.buf[0] = clCreateBuffer(gpu.context, CL_MEM_READ_WRITE, sizeof(float) * 224 * 224 * 64, NULL, NULL);
     gpu.buf[1] = clCreateBuffer(gpu.context, CL_MEM_READ_WRITE, sizeof(float) * 224 * 224 * 64, NULL, NULL);
     return 0;
 }
 
+// Filters & Weights
+float *f1_1, *f1_2, *f2_1, *f2_2, *f3_1, *f3_2, *f3_3,
+    *f4_1, *f4_2, *f4_3, *f5_1, *f5_2, *f5_3,
+    *w1, *w2, *w3;
+// Biases
+float *b1_1, *b1_2, *b2_1, *b2_2, *b3_1, *b3_2, *b3_3,
+    *b4_1, *b4_2, *b4_3, *b5_1, *b5_2, *b5_3, *b1, *b2, *b3;
+
+int* g_labels;
+float* g_confidences;
+
+
+typedef struct fc_layer_thread_args {
+    float* stage;
+    int id;
+} fc_layer_thread_args;
+
+void* fc_layer_thread(void* varg) {
+    fc_layer_thread_args* arg = (fc_layer_thread_args*)varg;
+    int id = arg->id;
+    float* stage = arg->stage;
+
+    // Fully connected layers
+    float *fc1, *fc2, *fc3;
+    posix_memalign((void**)&fc1, 256, sizeof(float) * 4096);
+    posix_memalign((void**)&fc2, 256, sizeof(float) * 4096);
+    posix_memalign((void**)&fc3, 256, sizeof(float) * 1024);
+ 
+    fc_layer(stage, fc1, w1, b1, 7 * 7 * 512, 4096);
+    fc_layer(fc1, fc2, w2, b2, 4096, 4096);
+    fc_layer(fc2, fc3, w3, b3, 4096, 1000);
+
+    softmax(fc3);
+
+    g_labels[id] = find_max(fc3);
+    g_confidences[id] = fc3[g_labels[id]];
+
+    free(fc1);
+    free(fc2);
+    free(fc3);
+    free(stage);
+    free(arg);
+    return NULL;
+}
+
 void vggnet(float* images, float* network, int* labels, float* confidences, int num_images) {
     if (init_opencl() != 0) {
         return;
     }
-    // Pooling layers
-    float *p5;
-    // Fully connected layers
-    float *fc1, *fc2, *fc3;
-    // Filters & Weights
-    float *f1_1, *f1_2, *f2_1, *f2_2, *f3_1, *f3_2, *f3_3,
-        *f4_1, *f4_2, *f4_3, *f5_1, *f5_2, *f5_3,
-        *w1, *w2, *w3;
-    // Biases
-    float *b1_1, *b1_2, *b2_1, *b2_2, *b3_1, *b3_2, *b3_3,
-        *b4_1, *b4_2, *b4_3, *b5_1, *b5_2, *b5_3, *b1, *b2, *b3;
-
-    p5 = (float*)malloc(sizeof(float) * 7 * 7 * 512);
-
-    fc1 = (float*)malloc(sizeof(float) * 4096);
-    fc2 = (float*)malloc(sizeof(float) * 4096);
-    fc3 = (float*)malloc(sizeof(float) * 1000);
+    g_labels = labels;
+    g_confidences = confidences;
 
     f1_1 = get_param(&network, 3 * 3 * 3 * 64);
     b1_1 = get_param(&network, 64);
@@ -263,6 +266,8 @@ void vggnet(float* images, float* network, int* labels, float* confidences, int 
     w3 = get_param(&network, 4096 * 1000);
     b3 = get_param(&network, 1000);
 
+    pthread_t fc_threads[1000];
+
     for (int i = 0; i < num_images; ++i) {
         float* image = images + i * 224 * 224 * 3;
         clEnqueueWriteBuffer(gpu.cmd_queue, gpu.buf[0], CL_TRUE, 0, sizeof(float) * 224 * 224 * 3, (void*)image, 0, NULL, NULL);
@@ -290,21 +295,17 @@ void vggnet(float* images, float* network, int* labels, float* confidences, int 
         convolution_2row_layer(f5_3, b5_3, 14, 512, 512);
         pooling_layer(7, 512);
 
-        clEnqueueReadBuffer(gpu.cmd_queue, gpu.buf[0], CL_TRUE, 0, sizeof(float) * 7 * 7 * 512, (void*)p5, 0, NULL, NULL);
+        float* stage;
+        posix_memalign((void**)&stage, 256, sizeof(float) * 7 * 7 * 512);
+        clEnqueueReadBuffer(gpu.cmd_queue, gpu.buf[0], CL_TRUE, 0, sizeof(float) * 7 * 7 * 512, (void*)stage, 0, NULL, NULL);
 
-        fc_layer(p5, fc1, w1, b1, 7 * 7 * 512, 4096);
-        fc_layer(fc1, fc2, w2, b2, 4096, 4096);
-        fc_layer(fc2, fc3, w3, b3, 4096, 1000);
-
-        softmax(fc3);
-
-        labels[i] = find_max(fc3);
-        confidences[i] = fc3[labels[i]];
+        fc_layer_thread_args* arg = (fc_layer_thread_args*)malloc(sizeof(fc_layer_thread_args));
+        arg->stage = stage;
+        arg->id = i;
+        pthread_create(&fc_threads[i], NULL, &fc_layer_thread, (void*)arg);
     }
 
-    free(p5);
-
-    free(fc1);
-    free(fc2);
-    free(fc3);
+    for (int i = 0; i < num_images; ++i) {
+        pthread_join(fc_threads[i], NULL);
+    }
 }
