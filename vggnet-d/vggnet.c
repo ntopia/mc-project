@@ -367,13 +367,14 @@ void vggnet(float* images, float* network, int* labels, float* confidences, int 
     for (int k = 0; k < 3; ++k) {
         pthread_join(threads[k], NULL);
     }
+    MPI_Barrier(MPI_COMM_WORLD);
 
     int* tmp_labels = (int*)malloc(sizeof(int) * 1024);
     float* tmp_confidences = (float*)malloc(sizeof(float) * 1024);
     MPI_Allgather(labels + images_st[task_id], cntOneTask, MPI_INT, tmp_labels, cntOneTask, MPI_INT, MPI_COMM_WORLD);
     MPI_Allgather(confidences + images_st[task_id], cntOneTask, MPI_FLOAT, tmp_confidences, cntOneTask, MPI_FLOAT, MPI_COMM_WORLD);
 
-    for (int i = 0; i < 1000; ++i) {
+    for (int i = 0; i < num_all_images; ++i) {
         if (i < images_st[task_id] || i >= images_st[task_id] + images_cnt[task_id]) {
             labels[i] = tmp_labels[i];
             confidences[i] = tmp_confidences[i];
