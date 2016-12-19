@@ -367,7 +367,7 @@ void vggnet(float* images, float* network, int* labels, float* confidences, int 
     for (int k = 0; k < 3; ++k) {
         pthread_join(threads[k], NULL);
     }
-    MPI_Barrier(MPI_COMM_WORLD);
+    //MPI_Barrier(MPI_COMM_WORLD);
 
     int* tmp_labels = (int*)malloc(sizeof(int) * 1024);
     float* tmp_confidences = (float*)malloc(sizeof(float) * 1024);
