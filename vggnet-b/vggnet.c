@@ -102,14 +102,15 @@ static void fc_layer(float* input_neuron, float* output_neuron, float* weights, 
 static void softmax(float* output) {
     float max = output[0];
     for (int i = 1; i < 1000; ++i) {
-        max = (output[i] > max) ? output[i] : max;
+        if (max < output[i]) max = output[i];
     }
     float sum = 0;
     for (int i = 0; i < 1000; ++i) {
-        sum += exp(output[i] - max);
+        output[i] = exp(output[i] - max);
+        sum += output[i];
     }
     for (int i = 0; i < 1000; ++i) {
-        output[i] = exp(output[i] - max) / sum;
+        output[i] /= sum;
     }
 }
 
