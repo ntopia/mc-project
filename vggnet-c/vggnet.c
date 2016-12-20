@@ -221,7 +221,9 @@ void printBuildFailure(opencl_context* ctx) {
     logbuf = (char*)malloc(loglen);
     clGetProgramBuildInfo(ctx->program, ctx->device, CL_PROGRAM_BUILD_LOG, loglen, logbuf, NULL);
     printf("%s\n", logbuf);
-} 
+}
+
+char* kernel_source_gpu;
 
 int init_opencl() {
     cl_platform_id platform;
@@ -235,22 +237,7 @@ int init_opencl() {
         gpu[k].device = tmp_gid[k];
         gpu[k].context = clCreateContext(NULL, 1, &gpu[k].device, NULL, NULL, NULL);
     }
-
-    char* kernel_source_gpu;
     read_kernel("./kernel-gpu.cl", &kernel_source_gpu);
-    for (int k = 0; k < 4; ++k) {
-        gpu[k].program = clCreateProgramWithSource(gpu[k].context, 1, (const char**)&kernel_source_gpu, NULL, NULL);
-        if (clBuildProgram(gpu[k].program, 1, &gpu[k].device, "-cl-denorms-are-zero -cl-fast-relaxed-math", NULL, NULL) != CL_SUCCESS) {
-            printBuildFailure(&gpu[k]);
-            return 1;
-        }
-    }
-
-    for (int k = 0; k < 4; ++k) {
-        gpu[k].cmd_queue = clCreateCommandQueue(gpu[k].context, gpu[k].device, 0, NULL);
-        gpu[k].buf[0] = clCreateBuffer(gpu[k].context, CL_MEM_READ_WRITE, sizeof(float) * 224 * 224 * 64, NULL, NULL);
-        gpu[k].buf[1] = clCreateBuffer(gpu[k].context, CL_MEM_READ_WRITE, sizeof(float) * 224 * 224 * 64, NULL, NULL);
-    }
     return 0;
 }
 
@@ -308,6 +295,16 @@ void* vggnet_thread(void* arg) {
     vggnet_thread_args* targ = (vggnet_thread_args*)arg;
     int images_st = targ->images_st, images_ed = targ->images_ed;
     int thread_id = targ->thread_id;
+
+    gpu[thread_id].cmd_queue = clCreateCommandQueue(gpu[thread_id].context, gpu[thread_id].device, 0, NULL);
+    gpu[thread_id].buf[0] = clCreateBuffer(gpu[thread_id].context, CL_MEM_READ_WRITE, sizeof(float) * 224 * 224 * 64, NULL, NULL);
+    gpu[thread_id].buf[1] = clCreateBuffer(gpu[thread_id].context, CL_MEM_READ_WRITE, sizeof(float) * 224 * 224 * 64, NULL, NULL);
+
+    gpu[thread_id].program = clCreateProgramWithSource(gpu[thread_id].context, 1, (const char**)&kernel_source_gpu, NULL, NULL);
+    if (clBuildProgram(gpu[thread_id].program, 1, &gpu[thread_id].device, "-cl-denorms-are-zero -cl-fast-relaxed-math", NULL, NULL) != CL_SUCCESS) {
+        printBuildFailure(&gpu[thread_id]);
+        return NULL;
+    }
 
     for (int i = images_st; i < images_ed; ++i) {
         float* image = g_images + i * 224 * 224 * 3;

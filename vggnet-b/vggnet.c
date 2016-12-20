@@ -223,6 +223,8 @@ void printBuildFailure(opencl_context* ctx) {
     printf("%s\n", logbuf);
 }
 
+char* kernel_source_gpu;
+
 int init_opencl() {
     cl_platform_id platform;
     clGetPlatformIDs(1, &platform, NULL);
@@ -231,18 +233,7 @@ int init_opencl() {
         return 1;
     }
     gpu.context = clCreateContext(NULL, 1, &gpu.device, NULL, NULL, NULL);
-
-    char* kernel_source_gpu;
     read_kernel("./kernel-gpu.cl", &kernel_source_gpu);
-    gpu.program = clCreateProgramWithSource(gpu.context, 1, (const char**)&kernel_source_gpu, NULL, NULL);
-    if (clBuildProgram(gpu.program, 1, &gpu.device, "-cl-denorms-are-zero -cl-fast-relaxed-math", NULL, NULL) != CL_SUCCESS) {
-        printBuildFailure(&gpu);
-        return 1;
-    }
-
-    gpu.cmd_queue = clCreateCommandQueue(gpu.context, gpu.device, 0, NULL);
-    gpu.buf[0] = clCreateBuffer(gpu.context, CL_MEM_READ_WRITE, sizeof(float) * 224 * 224 * 64, NULL, NULL);
-    gpu.buf[1] = clCreateBuffer(gpu.context, CL_MEM_READ_WRITE, sizeof(float) * 224 * 224 * 64, NULL, NULL);
     return 0;
 }
 
@@ -334,6 +325,16 @@ void vggnet(float* images, float* network, int* labels, float* confidences, int 
     b2 = get_param(&network, 4096);
     w3 = get_param(&network, 4096 * 1000);
     b3 = get_param(&network, 1000);
+
+    gpu.cmd_queue = clCreateCommandQueue(gpu.context, gpu.device, 0, NULL);
+    gpu.buf[0] = clCreateBuffer(gpu.context, CL_MEM_READ_WRITE, sizeof(float) * 224 * 224 * 64, NULL, NULL);
+    gpu.buf[1] = clCreateBuffer(gpu.context, CL_MEM_READ_WRITE, sizeof(float) * 224 * 224 * 64, NULL, NULL);
+
+    gpu.program = clCreateProgramWithSource(gpu.context, 1, (const char**)&kernel_source_gpu, NULL, NULL);
+    if (clBuildProgram(gpu.program, 1, &gpu.device, "-cl-denorms-are-zero -cl-fast-relaxed-math", NULL, NULL) != CL_SUCCESS) {
+        printBuildFailure(&gpu);
+        return 1;
+    }
 
     for (int i = 0; i < num_images; ++i) {
         float* image = images + i * 224 * 224 * 3;
