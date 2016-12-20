@@ -302,7 +302,7 @@ void* vggnet_thread(void* arg) {
     gpu[thread_id].buf[0] = clCreateBuffer(gpu[thread_id].context, CL_MEM_READ_WRITE, sizeof(float) * 224 * 224 * 64, NULL, NULL);
     gpu[thread_id].buf[1] = clCreateBuffer(gpu[thread_id].context, CL_MEM_READ_WRITE, sizeof(float) * 224 * 224 * 64, NULL, NULL);
 
-    gpu[thread_id].program = clCreateProgramWithBinary(gpu[thread_id].context, 1, &gpu[thread_id].device, &kernel_binary_len, (const unsigned char**)&kernel_binary_gpu[thread_id], NULL, NULL);
+    gpu[thread_id].program = clCreateProgramWithBinary(gpu[thread_id].context, 1, &gpu[thread_id].device, &kernel_binary_len, (const unsigned char**)&kernel_binary_gpu, NULL, NULL);
     if (clBuildProgram(gpu[thread_id].program, 1, &gpu[thread_id].device, KERNEL_COMPILE_OPTION, NULL, NULL) != CL_SUCCESS) {
         printBuildFailure(&gpu[thread_id]);
         return NULL;
