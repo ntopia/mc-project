@@ -38,6 +38,7 @@ static void pooling_layer(int gpu_id, int N, int D) {
     size_t global_work_offset[] = { 0, 0 };
     size_t local_work_size[] = { 1, N };
     clEnqueueNDRangeKernel(gpu[gpu_id].cmd_queue, kernel, 2, global_work_offset, global_work_size, local_work_size, 0, NULL, NULL);
+	clFinish(gpu[gpu_id].cmd_queue);
 
     clReleaseKernel(kernel);
     swap_cl_mem(&gpu[gpu_id]);
@@ -59,6 +60,7 @@ static void convolution_1row_0_layer(int gpu_id, float* filters, float* biases, 
     size_t global_work_offset[] = { 0, 0 };
     size_t local_work_size[] = { 1, N };
     clEnqueueNDRangeKernel(gpu[gpu_id].cmd_queue, kernel, 2, global_work_offset, global_work_size, local_work_size, 0, NULL, NULL);
+	clFinish(gpu[gpu_id].cmd_queue);
 
     clReleaseKernel(kernel);
     swap_cl_mem(&gpu[gpu_id]);
@@ -80,6 +82,7 @@ static void convolution_1row_1_layer(int gpu_id, float* filters, float* biases, 
     size_t global_work_offset[] = { 0, 0 };
     size_t local_work_size[] = { 1, N };
     clEnqueueNDRangeKernel(gpu[gpu_id].cmd_queue, kernel, 2, global_work_offset, global_work_size, local_work_size, 0, NULL, NULL);
+	clFinish(gpu[gpu_id].cmd_queue);
 
     clReleaseKernel(kernel);
     swap_cl_mem(&gpu[gpu_id]);
@@ -101,6 +104,7 @@ static void convolution_2row_layer(int gpu_id, float* filters, float* biases, in
     size_t global_work_offset[] = { 0, 0 };
     size_t local_work_size[] = { 1, N * 2 };
     clEnqueueNDRangeKernel(gpu[gpu_id].cmd_queue, kernel, 2, global_work_offset, global_work_size, local_work_size, 0, NULL, NULL);
+	clFinish(gpu[gpu_id].cmd_queue);
 
     clReleaseKernel(kernel);
     swap_cl_mem(&gpu[gpu_id]);
@@ -122,6 +126,7 @@ static void convolution_4row_layer(int gpu_id, float* filters, float* biases, in
     size_t global_work_offset[] = { 0, 0 };
     size_t local_work_size[] = { N, 4 };
     clEnqueueNDRangeKernel(gpu[gpu_id].cmd_queue, kernel, 2, global_work_offset, global_work_size, local_work_size, 0, NULL, NULL);
+	clFinish(gpu[gpu_id].cmd_queue);
 
     clReleaseKernel(kernel);
     swap_cl_mem(&gpu[gpu_id]);
@@ -143,6 +148,7 @@ static void convolution_break_layer(int gpu_id, float* filters, float* biases, i
     size_t global_work_offset[] = { 0 };
     size_t local_work_size[] = { 256 };
     clEnqueueNDRangeKernel(gpu[gpu_id].cmd_queue, kernel, 1, global_work_offset, global_work_size, local_work_size, 0, NULL, NULL);
+	clFinish(gpu[gpu_id].cmd_queue);
 
     clReleaseKernel(kernel);
     swap_cl_mem(&gpu[gpu_id]);
