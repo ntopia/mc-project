@@ -304,7 +304,7 @@ void* vggnet_thread(void* arg) {
     gpu[thread_id].program = clCreateProgramWithBinary(gpu[thread_id].context, 1, &gpu[thread_id].device, &kernel_binary_len, (const unsigned char**)&kernel_binary_gpu[thread_id], NULL, NULL);
     if (clBuildProgram(gpu[thread_id].program, 1, &gpu[thread_id].device, KERNEL_COMPILE_OPTION, NULL, NULL) != CL_SUCCESS) {
         printBuildFailure(&gpu[thread_id]);
-        return;
+        return NULL;
     }
 
     for (int i = images_st; i < images_ed; ++i) {
