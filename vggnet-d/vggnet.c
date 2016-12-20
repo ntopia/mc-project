@@ -254,7 +254,7 @@ float *b1_1, *b1_2, *b2_1, *b2_2, *b3_1, *b3_2, *b3_3,
 float* g_images;
 int* g_labels;
 float* g_confidences;
-float stage[1000][7 * 7 * 512];
+float stage[1040][7 * 7 * 512];
 
 typedef struct fc_layer_thread_args {
     int id;
@@ -285,8 +285,8 @@ void* fc_layer_thread(void* varg) {
     return NULL;
 }
 
-pthread_t fc_threads[1000];
-fc_layer_thread_args fc_arg[1000];
+pthread_t fc_threads[1040];
+fc_layer_thread_args fc_arg[1040];
 
 typedef struct vggnet_thread_args {
     int images_st, images_ed;
