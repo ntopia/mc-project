@@ -202,15 +202,14 @@ static float* get_param(float** array, int size) {
     return subarray;
 }
 
-void read_kernel(const char* filename, char** dst) {
+void read_kernel(const char* filename, char** dst, size_t* len) {
     FILE* infp = fopen(filename, "r");
-    fseek(infp, -1, SEEK_END);
-    size_t kernel_len = (size_t)ftell(infp);
+    fseek(infp, 0, SEEK_END);
+    *len = (size_t)ftell(infp);
     fseek(infp, 0, SEEK_SET);
 
-    *dst = (char*)malloc(sizeof(char) * (kernel_len + 1));
-    fread(*dst, sizeof(char), kernel_len, infp);
-    (*dst)[kernel_len] = '\0';
+    *dst = (char*)malloc(sizeof(char) * (*len));
+    fread(*dst, sizeof(char), *len, infp);
     fclose(infp);
 }
 
@@ -224,7 +223,9 @@ void printBuildFailure(opencl_context* ctx) {
     printf("%s\n", logbuf);
 } 
 
-char* kernel_source_gpu;
+#define KERNEL_COMPILE_OPTION "-cl-denorms-are-zero -cl-strict-aliasing -cl-no-signed-zeros -cl-fast-relaxed-math"
+char* kernel_binary_gpu;
+size_t kernel_binary_len;
 
 int init_opencl() {
     cl_platform_id platform;
@@ -238,7 +239,7 @@ int init_opencl() {
         gpu[k].device = tmp_gid[k];
         gpu[k].context = clCreateContext(NULL, 1, &gpu[k].device, NULL, NULL, NULL);
     }
-    read_kernel("./kernel-gpu.cl", &kernel_source_gpu);
+    read_kernel("./kernel-gpu.cl.bin", &kernel_binary_gpu, &kernel_binary_len);
     return 0;
 }
 
@@ -301,10 +302,10 @@ void* vggnet_thread(void* arg) {
     gpu[thread_id].buf[0] = clCreateBuffer(gpu[thread_id].context, CL_MEM_READ_WRITE, sizeof(float) * 224 * 224 * 64, NULL, NULL);
     gpu[thread_id].buf[1] = clCreateBuffer(gpu[thread_id].context, CL_MEM_READ_WRITE, sizeof(float) * 224 * 224 * 64, NULL, NULL);
 
-    gpu[thread_id].program = clCreateProgramWithSource(gpu[thread_id].context, 1, (const char**)&kernel_source_gpu, NULL, NULL);
-    if (clBuildProgram(gpu[thread_id].program, 1, &gpu[thread_id].device, "-cl-denorms-are-zero -cl-fast-relaxed-math", NULL, NULL) != CL_SUCCESS) {
+    gpu[thread_id].program = clCreateProgramWithBinary(gpu[thread_id].context, 1, &gpu[thread_id].device, &kernel_binary_len, (const unsigned char**)&kernel_binary_gpu[thread_id], NULL, NULL);
+    if (clBuildProgram(gpu[thread_id].program, 1, &gpu[thread_id].device, KERNEL_COMPILE_OPTION, NULL, NULL) != CL_SUCCESS) {
         printBuildFailure(&gpu[thread_id]);
-        return NULL;
+        return;
     }
 
     for (int i = images_st; i < images_ed; ++i) {

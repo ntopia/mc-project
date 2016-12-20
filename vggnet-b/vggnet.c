@@ -222,6 +222,7 @@ void printBuildFailure(opencl_context* ctx) {
     printf("%s\n", logbuf);
 }
 
+#define KERNEL_COMPILE_OPTION "-cl-denorms-are-zero -cl-strict-aliasing -cl-no-signed-zeros -cl-fast-relaxed-math"
 char* kernel_binary_gpu;
 size_t kernel_binary_len;
 
@@ -281,8 +282,6 @@ void* fc_layer_thread(void* varg) {
 pthread_t fc_threads[1000];
 fc_layer_thread_args fc_arg[1000];
 
-#define KERNEL_COMPILE_OPTION "-cl-denorms-are-zero -cl-strict-aliasing -cl-no-signed-zeros -cl-fast-relaxed-math"
-
 void vggnet(float* images, float* network, int* labels, float* confidences, int num_images) {
     if (init_opencl() != 0) {
         return;
@@ -332,7 +331,6 @@ void vggnet(float* images, float* network, int* labels, float* confidences, int 
     gpu.buf[0] = clCreateBuffer(gpu.context, CL_MEM_READ_WRITE, sizeof(float) * 224 * 224 * 64, NULL, NULL);
     gpu.buf[1] = clCreateBuffer(gpu.context, CL_MEM_READ_WRITE, sizeof(float) * 224 * 224 * 64, NULL, NULL);
 
-    //gpu.program = clCreateProgramWithSource(gpu.context, 1, (const char**)&kernel_source_gpu, NULL, NULL);
     gpu.program = clCreateProgramWithBinary(gpu.context, 1, &gpu.device, &kernel_binary_len, (const unsigned char**)&kernel_binary_gpu, NULL, NULL);
     if (clBuildProgram(gpu.program, 1, &gpu.device, KERNEL_COMPILE_OPTION, NULL, NULL) != CL_SUCCESS) {
         printBuildFailure(&gpu);
