@@ -256,17 +256,15 @@ float *b1_1, *b1_2, *b2_1, *b2_2, *b3_1, *b3_2, *b3_3,
 
 int* g_labels;
 float* g_confidences;
-
+float stage[1000][7 * 7 * 512];
 
 typedef struct fc_layer_thread_args {
-    float* stage;
     int id;
 } fc_layer_thread_args;
 
 void* fc_layer_thread(void* varg) {
     fc_layer_thread_args* arg = (fc_layer_thread_args*)varg;
     int id = arg->id;
-    float* stage = arg->stage;
 
     // Fully connected layers
     float *fc1, *fc2, *fc3;
@@ -274,7 +272,7 @@ void* fc_layer_thread(void* varg) {
     posix_memalign((void**)&fc2, 256, sizeof(float) * 4096);
     posix_memalign((void**)&fc3, 256, sizeof(float) * 1024);
  
-    fc_layer(stage, fc1, w1, b1, 7 * 7 * 512, 4096);
+    fc_layer(stage[id], fc1, w1, b1, 7 * 7 * 512, 4096);
     fc_layer(fc1, fc2, w2, b2, 4096, 4096);
     fc_layer(fc2, fc3, w3, b3, 4096, 1000);
 
@@ -337,9 +335,6 @@ void vggnet(float* images, float* network, int* labels, float* confidences, int 
     w3 = get_param(&network, 4096 * 1000);
     b3 = get_param(&network, 1000);
 
-    float* stage;
-    posix_memalign((void**)&stage, 256, sizeof(float) * 7 * 7 * 512 * num_images);
-
     for (int i = 0; i < num_images; ++i) {
         float* image = images + i * 224 * 224 * 3;
         clEnqueueWriteBuffer(gpu.cmd_queue, gpu.buf[0], CL_FALSE, 0, sizeof(float) * 224 * 224 * 3, (void*)image, 0, NULL, NULL);
@@ -367,10 +362,8 @@ void vggnet(float* images, float* network, int* labels, float* confidences, int 
         convolution_break_layer(f5_3, b5_3, 14, 512, 512);
         pooling_layer(7, 512);
 
-        float* curs = stage + 7 * 7 * 512 * i;
-        clEnqueueReadBuffer(gpu.cmd_queue, gpu.buf[0], CL_TRUE, 0, sizeof(float) * 7 * 7 * 512, (void*)curs, 0, NULL, NULL);
+        clEnqueueReadBuffer(gpu.cmd_queue, gpu.buf[0], CL_TRUE, 0, sizeof(float) * 7 * 7 * 512, (void*)stage[i], 0, NULL, NULL);
 
-        fc_arg[i].stage = curs;
         fc_arg[i].id = i;
         pthread_create(&fc_threads[i], NULL, &fc_layer_thread, (void*)&fc_arg[i]);
     }
